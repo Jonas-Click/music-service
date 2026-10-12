@@ -1,0 +1,29 @@
+[Unit]
+# Keep in sync with music-service.service in the repo.
+Description=Tunu (VESC) Music Playback Service
+# Some system generations run valkey instead of redis, with no redis.service
+# alias installed; both are listed so this unit orders correctly either way —
+# a missing unit in After= is simply ignored.
+After=librescoot-onboot.service valkey.service redis.service network.target
+
+# Deliberately no Wants= on librescoot-onboot.service: that script is what
+# installs, enables and starts this unit, and a Wants= on it would restart
+# that script every time this unit (re)starts, which restarts this unit
+# again — a loop, not a boot. After= alone gives ordering without the
+# retrigger; nothing here needs that script to have finished, since can0
+# bring-up and the Redis client both reconnect on their own.
+
+# A fault must not be able to hammer the board indefinitely.
+StartLimitIntervalSec=300
+StartLimitBurst=5
+
+[Service]
+Type=simple
+ExecStart=/data/music-service/music-service
+Restart=on-failure
+RestartSec=10
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target

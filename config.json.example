@@ -1,0 +1,14 @@
+{
+  "can": { "interface": "can0" },
+  "redis": { "addr": "127.0.0.1:6379" },
+  "status": { "stale_seconds": 5 },
+  "unlock_melody": {
+    "enabled": false,
+    "song": 3,
+    "volume": 100,
+    "duration_seconds": 15,
+    "trigger_field": "state",
+    "trigger_value": "parked",
+    "trigger_from": "stand-by"
+  }
+}

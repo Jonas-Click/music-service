@@ -1,0 +1,4 @@
+/music-service
+/music-service-*
+/dist/
+*.tmp
