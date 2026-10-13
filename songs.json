@@ -8,5 +8,9 @@
   ]},
   { "number": 4, "name": "Happy Birthday to You", "tracks": [
     { "file": "bday-mel.bin", "volume": 2.5, "decay": 0.92 }
+  ]},
+  { "number": 5, "name": "robot car for justice", "tracks": [
+    { "file": "robot-car-for-justice-mel.bin", "volume": 2.5, "decay": 1.0 },
+    { "file": "robot-car-for-justice-bass.bin", "volume": 1.0, "decay": 0.92 }
   ]}
 ]

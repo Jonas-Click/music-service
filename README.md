@@ -84,6 +84,7 @@ These songs come built in:
 | 2 | La Cucaracha |
 | 3 | Korobeiniki |
 | 4 | Happy Birthday to You |
+| 5 | robot car for justice (riff + fanfare) |
 
 Number 1 is reserved and can't be used for your own songs.
 
