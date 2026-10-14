@@ -610,15 +610,15 @@ func songListText() string {
 const helpTextTemplate = `music-service — Tunu (VESC) music playback controller.
 
 Sends song-select, stop and volume commands to Tunu's app.lisp over CAN
-(Music_Control_ID1/2, 0x4E8/0x4E9), and republishes Tunu's Music_Status echo
-(0x7E6) as a Redis status hash.
+(Music_Control_ID1/2, 0x4E8/0x4E9), switches its engine sound (Engine_Sound,
+0x4EA), and republishes Tunu's echoes (0x7E6, 0x7ED) as a Redis status hash.
 
 Usage:
   music <command> [args]
 
 Commands:
   play <song number>    Play a song
-  stop                  Stop playback
+  stop                  Stop playback (also ends an engine demo ride)
   vol <0-100>           Set master volume
   raw <canid-hex> [hex]  Send a raw CAN frame (canid in hex, e.g. 4E9 32 = volume 50%%; default data 01)
   status                 Show last known playback state (from Tunu's echo)
@@ -648,7 +648,8 @@ Examples:
   music engine ride        engine sound for this ride, off when locked
   music engine for 20m 60  engine sound for 20 minutes at 60%%
 
-Use "music settings --help" for the full settings reference.
+Use "music settings --help" for the full settings reference and
+"music engine --help" for the engine sound.
 `
 
 // helpText is built fresh each run, after loadSongs, since the song list it
@@ -694,14 +695,16 @@ Usage:
   music engine on [vol]            On until switched off (survives restarts)
   music engine off                 Off
   music engine ride [vol]          On for this ride, off when the scooter is locked
-  music engine for <time> [vol]    On for a set time: 10m, 90s, 1h (a plain number
-                                   is minutes), then off
+  music engine for <time> [vol]    On for a set time, 10s to 24h: 10m, 90s, 1h
+                                   (a plain number is minutes), then off
   music engine vol <0-100>         Volume only (default 50)
   music engine demo [vol]          Play a ~23 s demo ride at a standstill (idle, full
                                    throttle through the gears, cruise, brake). Same
                                    sound as a real ride; "off" or
                                    "music stop" stops it
 
-Tunu is unpowered while locked and starts with the engine sound off, so the
-service switches it back on after every unlock while a mode is active.
+While a mode is active, the sound plays whenever the kickstand is up and
+stops when it goes down. Tunu is unpowered while locked and starts with the
+engine sound off, so the service switches it on again as needed; nothing is
+sent while the scooter is locked.
 `

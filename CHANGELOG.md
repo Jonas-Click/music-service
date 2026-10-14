@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## v1.1.0 — unreleased
 
 - `music engine`: engine sound that follows speed and throttle, on until
   switched off, for one ride, or for a set time. Re-applied after every unlock

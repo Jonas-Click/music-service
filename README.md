@@ -13,7 +13,8 @@ controller turns the notes into sound by making the motor hum them.
   `192.168.7.1`).
 - A Tunu motor controller running an `app.lisp` that includes the **music
   engine** (the part that receives songs over CAN and plays them). Without it,
-  the commands below have nothing to talk to.
+  the commands below have nothing to talk to. The engine sound
+  (`music engine`) also needs the engine-sound part of `app.lisp`.
 
 ## Install
 
@@ -151,6 +152,10 @@ If it was your unlock song, you'll be reminded to pick another one.
 - **Right after unlocking**, the controller needs a few seconds to start.
   The unlock melody waits for it automatically; a manual `music play` in that
   moment may need a second try.
+- **Engine sound silent:** it only plays with the kickstand up. `music engine`
+  shows the mode and whether the controller confirmed it; "no Engine_Status
+  echo yet" means the controller's `app.lisp` has no engine sound, or the
+  scooter is locked.
 
 <details>
 <summary><b>For developers</b></summary>
@@ -164,6 +169,8 @@ channel `music`, and the service executes them:
 - `play:<song number>`, `stop`, `vol:<0-100>`
 - `raw:<canid-hex>:<hexbytes>` (send an arbitrary frame)
 - `settings:<key>:<value>`
+- `engine:on[:vol]`, `engine:off`, `engine:ride[:vol]`,
+  `engine:for:<seconds>[:vol]`, `engine:vol:<0-100>`, `engine:demo[:vol]`
 
 Songs are not stored on the controller. Before every play, the service uploads
 the song's MIDI bytes over CAN, then sends the play command. The controller
@@ -175,6 +182,15 @@ itself provides, so it's never uploaded. To list it, add
 Every command is retried until the controller's own status reply confirms it,
 so a lost frame doesn't leave the status wrong. The unlock trigger allows
 extra time for the controller's boot.
+
+The engine sound is a mode the service keeps (`off`, `on`, `ride`, `timed`).
+While a mode is active it is switched on when the vehicle `state` goes to
+`ready-to-drive` (kickstand up) and off when it goes back to `parked`; `ride`
+ends when the controller loses power (locking), `timed` at its deadline. The
+controller starts with the engine sound off at every power-up, so the service
+sends it again, allowing for the boot time. Nothing is sent while the
+controller is unpowered: unacknowledged frames would push the CAN controller
+towards bus-off. Only `on` and the volume are saved in `config.json`.
 
 ### CAN frames
 
@@ -205,7 +221,10 @@ doubles on retries.
 ### Redis
 
 Current playback state is kept in the `music` hash (`playing`, `song`, `name`,
-`volume`, `updated`). The unlock trigger watches the `vehicle` hash: by
+`volume`, `updated`). The engine sound adds the wanted state (`engine_mode`,
+`engine_until`, `engine_volume_set`, `engine_sounding`) and the controller's
+confirmation (`engine_on`, `engine_volume`, `engine_demo`, `engine_updated`).
+The engine sound follows the `vehicle` hash's `state` field. The unlock trigger watches the `vehicle` hash: by
 default it fires when `state` changes from `stand-by` to `parked`. Ending a
 ride also leads to `parked`, which is why the previous value is checked too.
 All three are configurable (`unlock.trigger_field`, `unlock.trigger_value`,
@@ -228,12 +247,17 @@ All three are configurable (`unlock.trigger_field`, `unlock.trigger_value`,
     "trigger_field": "state",
     "trigger_value": "parked",
     "trigger_from": "stand-by"
+  },
+  "engine_sound": {
+    "enabled": false,
+    "volume": 50
   }
 }
 ```
 
 `can` and `redis` need a restart to take effect; everything under
-`unlock_melody` can be changed live with `music settings`. The song catalog is
+`unlock_melody` can be changed live with `music settings`, and `engine_sound`
+with `music engine`. The song catalog is
 `songs.json` next to it, with the track files in `songs/`.
 
 ### Build
@@ -265,6 +289,7 @@ Releases are built by CI when a version tag is pushed.
 | `can.go` | frame building, upload framing, checksum |
 | `can_linux.go` / `can_dev.go` / `can_other.go` | SocketCAN, development sinks, non-Linux stub |
 | `redis.go` | command execution, uploads, unlock trigger, status |
+| `engine.go` | engine-sound modes, kickstand and unlock handling, demo |
 | `resp.go` | minimal Redis client |
 | `cli.go` | the `music` command |
 
