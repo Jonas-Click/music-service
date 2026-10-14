@@ -226,6 +226,30 @@ func engineVehicleState(sink canSink, newState string) {
 	go engineAssert(sink, engineBootAttempts)
 }
 
+// engineSeed takes the vehicle state when Redis (re)connects. On the first
+// connect after the service starts it always tells a powered Tunu the wanted
+// state: Tunu keeps running through an MDB crash or reboot, so it may still be
+// playing an engine sound this fresh service knows nothing about. After a
+// reconnect it is an ordinary state change.
+func engineSeed(sink canSink, state string) {
+	engine.mu.Lock()
+	first := engine.vehicleState == ""
+	if first {
+		engine.vehicleState = state
+	}
+	s := engine.s
+	engine.mu.Unlock()
+	if !first {
+		engineVehicleState(sink, state)
+		return
+	}
+	engineWriteStatus(s, state)
+	if vehiclePowered(state) {
+		log.Printf("engine: service start with Tunu powered (%s), asserting engine sound %s", state, onOff(s.sounding(time.Now(), state)))
+		go engineAssert(sink, engineBootAttempts)
+	}
+}
+
 // engineAssert sends the wanted state until Tunu's Engine_Status confirms it,
 // stopping early if a newer engineAssert starts or the vehicle loses power.
 func engineAssert(sink canSink, attempts int) {

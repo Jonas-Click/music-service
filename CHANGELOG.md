@@ -7,6 +7,9 @@
   (Tunu boots with it off) and only sent while Tunu is powered. Needs an
   `app.lisp` with Engine_Sound (`0x4EA`) / Engine_Status (`0x7ED`).
   Plays only with the kickstand up (ready-to-drive); kickstand down stops it.
+  Temporary modes (`ride`, `for`) are never saved, and at every service start
+  a powered Tunu is told the wanted state, so an MDB crash or reboot can't
+  leave the engine sound running.
 - `music engine demo`: a 23-second demo ride at a standstill, through the same
   sound code as a real ride. `music stop` ends it.
 

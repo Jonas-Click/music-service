@@ -67,10 +67,9 @@ func redisWatchLoop(sink canSink) error {
 	if vals, err := cmdConn.hmget(vehicleHash, triggerField); err == nil && len(vals) >= 1 {
 		lastVehicleField[triggerField] = vals[0]
 	}
-	// The engine sound follows the vehicle state too; seeding it here also
-	// asserts a wanted engine sound if Tunu is already powered.
+	// The engine sound follows the vehicle state too.
 	if vals, err := cmdConn.hmget(vehicleHash, engineStateField); err == nil && len(vals) >= 1 {
-		engineVehicleState(sink, vals[0])
+		engineSeed(sink, vals[0])
 	}
 	es, vstate := engineSnapshot()
 	engineWriteStatus(es, vstate)
