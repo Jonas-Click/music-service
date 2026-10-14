@@ -72,8 +72,8 @@ func redisWatchLoop(sink canSink) error {
 	if vals, err := cmdConn.hmget(vehicleHash, engineStateField); err == nil && len(vals) >= 1 {
 		engineVehicleState(sink, vals[0])
 	}
-	s, _ := engineSnapshot()
-	engineWriteStatus(s)
+	es, vstate := engineSnapshot()
+	engineWriteStatus(es, vstate)
 
 	channels := []string{"SUBSCRIBE", cmdChannel, vehicleChan}
 	subConn.setTimeout(cmdTimeout)
@@ -505,6 +505,7 @@ func handleCommand(sink canSink, cmdConn *redisConn, payload string) {
 			return
 		}
 		log.Printf("ctl: stop")
+		engineStopDemo(sink)
 		go confirmStopped(sink)
 
 	case "vol":
@@ -695,10 +696,7 @@ func canReader(sink canSink) {
 		if id == canIDEngineStatus && len(data) >= canEngineStatusLen {
 			on, volume := data[0] != 0, int(data[1])
 			demo := len(data) >= 3 && data[2] != 0
-			select {
-			case engineEchoCh <- engineEcho{on: on, volume: volume, demo: demo}:
-			default:
-			}
+			engineEchoSeen(engineEcho{on: on, volume: volume, demo: demo})
 			for k, v := range map[string]string{
 				engineStatusOn:      strconv.FormatBool(on),
 				engineStatusVol:     strconv.Itoa(volume),

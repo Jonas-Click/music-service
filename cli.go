@@ -254,6 +254,13 @@ func runEngineStatus() {
 	default:
 		fmt.Println("mode:     off")
 	}
+	if mode != "" && mode != string(engineOff) {
+		if f[engineStatusSounding] == "true" {
+			fmt.Println("          playing now (kickstand up)")
+		} else {
+			fmt.Println("          plays when the kickstand is up (ready to drive)")
+		}
+	}
 	if v := f[engineStatusWantVol]; v != "" {
 		fmt.Printf("volume:   %s%%\n", v)
 	}
@@ -678,7 +685,8 @@ Flags:
 `
 
 const engineUsage = `Engine sound: a hum on the motor that follows speed and throttle,
-with five virtual gears. Music has priority while a song plays. Needs an
+with five virtual gears. It plays while the kickstand is up (ready to drive)
+and stops when it goes down. Music has priority while a song plays. Needs an
 app.lisp with the engine sound (Engine_Sound 0x4EA / Engine_Status 0x7ED).
 
 Usage:
@@ -691,7 +699,8 @@ Usage:
   music engine vol <0-100>         Volume only (default 50)
   music engine demo [vol]          Play a ~23 s demo ride at a standstill (idle, full
                                    throttle through the gears, cruise, brake). Same
-                                   sound as a real ride; "off" stops it
+                                   sound as a real ride; "off" or
+                                   "music stop" stops it
 
 Tunu is unpowered while locked and starts with the engine sound off, so the
 service switches it back on after every unlock while a mode is active.

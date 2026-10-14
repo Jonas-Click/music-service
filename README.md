@@ -78,8 +78,10 @@ Changes apply immediately — no restart needed.
 ## Engine sound
 
 The motor can also hum like an engine while you ride: the pitch follows your
-speed through five virtual gears and gets louder when you accelerate. It needs
-an `app.lisp` with the engine sound. Music has priority while a song plays.
+speed through five virtual gears and gets louder when you accelerate. Once
+switched on, it plays while the kickstand is up and stops when you put it
+down. It needs an `app.lisp` with the engine sound. Music has priority while a
+song plays.
 
 ```sh
 music engine ride        # on for this ride, off when you lock the scooter
@@ -88,6 +90,7 @@ music engine on          # on until you switch it off
 music engine off
 music engine vol 60      # volume 0-100 (default 50)
 music engine demo        # hear a 23-second demo ride while standing still
+                         # (music stop ends it)
 music engine             # show the current mode
 ```
 

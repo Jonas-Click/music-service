@@ -1,14 +1,16 @@
 package main
 
-// Engine sound: app.lisp's engine hum (Engine_Sound, 0x4EA), switched on for
-// good, for one ride, or for a set time.
+// Engine sound: app.lisp's engine hum (Engine_Sound, 0x4EA), armed for good,
+// for one ride, or for a set time. While armed it plays only with the
+// kickstand up (vehicle state ready-to-drive); kickstand down (parked)
+// silences it until the next kickstand up.
 //
 // Tunu is unpowered while the scooter is locked and boots with the engine
 // sound off at every unlock, so the service keeps the wanted state itself and
-// re-asserts it whenever the vehicle becomes powered, retrying until
-// Engine_Status (0x7ED) confirms it. Nothing is sent while the vehicle is in
-// any other state: frames that nobody acknowledges walk the CAN controller's
-// error counter towards bus-off.
+// asserts it on every relevant vehicle state change, retrying until
+// Engine_Status (0x7ED) confirms it. Nothing is sent while Tunu is unpowered:
+// frames that nobody acknowledges walk the CAN controller's error counter
+// towards bus-off.
 
 import (
 	"log"
@@ -41,6 +43,7 @@ const (
 	engineStatusVol      = "engine_volume"
 	engineStatusUpdated  = "engine_updated"
 	engineStatusDemo     = "engine_demo"
+	engineStatusSounding = "engine_sounding"
 	vehicleStateParked   = "parked"
 	vehicleStateReady    = "ready-to-drive"
 	engineEchoBufferSize = 8
@@ -50,13 +53,13 @@ type engineState struct {
 	mode   engineMode
 	until  time.Time // engineTimed only
 	volume int
-	// gen changes on every state change, so a retry loop or timer started
-	// for an older state can tell it has been superseded and stop.
+	// gen changes on every mode change, so a timer started for an older
+	// mode can tell it has been superseded and stop.
 	gen int
 }
 
-// wantOn reports whether the engine sound should be playing right now.
-func (s engineState) wantOn(now time.Time) bool {
+// armed reports whether a mode is active right now.
+func (s engineState) armed(now time.Time) bool {
 	switch s.mode {
 	case engineOn, engineRide:
 		return true
@@ -66,12 +69,23 @@ func (s engineState) wantOn(now time.Time) bool {
 	return false
 }
 
+// sounding reports whether the engine sound should be playing: armed and the
+// kickstand up.
+func (s engineState) sounding(now time.Time, vehicleState string) bool {
+	return s.armed(now) && vehicleState == vehicleStateReady
+}
+
 var engine struct {
 	mu sync.Mutex
 	s  engineState
 	// vehicleState is the last seen vehicle `state`; Tunu is powered only
 	// in parked and ready-to-drive.
 	vehicleState string
+	// assertGen changes whenever a new engineAssert starts, so an older
+	// retry loop stops instead of racing it.
+	assertGen int
+	// demo mirrors Tunu's last Engine_Status: a demo ride is playing.
+	demo bool
 }
 
 type engineEcho struct {
@@ -118,7 +132,7 @@ func vehiclePowered(state string) bool {
 // one), saves the persistent part, and asserts it on Tunu if it is powered.
 func engineSet(sink canSink, mode engineMode, d time.Duration, volume int) {
 	engine.mu.Lock()
-	wasOn := engine.s.wantOn(time.Now())
+	wasOn := engine.s.sounding(time.Now(), engine.vehicleState)
 	engine.s.mode = mode
 	engine.s.until = time.Time{}
 	if mode == engineTimed {
@@ -128,23 +142,24 @@ func engineSet(sink canSink, mode engineMode, d time.Duration, volume int) {
 		engine.s.volume = volume
 	}
 	engine.s.gen++
-	s := engine.s
+	s, vstate := engine.s, engine.vehicleState
 	engine.mu.Unlock()
 
 	if mode == engineTimed {
 		go engineExpireAfter(sink, s.gen, d)
 	}
 	engineLogState("ctl", s)
-	engineWriteStatus(s)
+	engineWriteStatus(s, vstate)
 	if err := saveConfig(configForSave(), cfgPath); err != nil {
 		log.Printf("engine: config save failed: %v", err)
 	}
-	// Off before and after (e.g. only the volume changed): nothing to tell
-	// Tunu. Sending "off" anyway would also stop a running demo ride.
-	if !wasOn && !s.wantOn(time.Now()) {
+	// Silent before and after (off, kickstand down, or only the volume
+	// changed while silent): nothing to tell Tunu. Sending "off" anyway would
+	// also stop a running demo ride.
+	if !wasOn && !s.sounding(time.Now(), vstate) {
 		return
 	}
-	go engineAssert(sink, s.gen, engineCmdAttempts)
+	go engineAssert(sink, engineCmdAttempts)
 }
 
 // engineExpireAfter switches a timed engine sound off at its deadline, unless
@@ -160,24 +175,33 @@ func engineExpireAfter(sink canSink, gen int, d time.Duration) {
 		engine.mu.Unlock()
 		return
 	}
+	wasOn := engine.vehicleState == vehicleStateReady
 	engine.s.mode = engineOff
 	engine.s.until = time.Time{}
 	engine.s.gen++
-	s := engine.s
+	s, vstate := engine.s, engine.vehicleState
 	engine.mu.Unlock()
 	log.Printf("engine: time is up, switching off")
-	engineWriteStatus(s)
-	engineAssert(sink, s.gen, engineCmdAttempts)
+	engineWriteStatus(s, vstate)
+	if wasOn {
+		engineAssert(sink, engineCmdAttempts)
+	}
 }
 
-// engineVehicleState follows the vehicle state: an edge into a powered state
-// means Tunu has just booted (engine sound off), so the wanted state is
-// asserted again; an edge out of it ends a one-ride engine sound.
+// engineVehicleState follows the vehicle state. Kickstand up (into
+// ready-to-drive) starts an armed engine sound, kickstand down (into parked)
+// stops it, and losing power (locking) ends a one-ride engine sound.
 func engineVehicleState(sink canSink, newState string) {
+	now := time.Now()
 	engine.mu.Lock()
 	old := engine.vehicleState
+	if old == newState {
+		engine.mu.Unlock()
+		return
+	}
 	engine.vehicleState = newState
 	wasPowered, isPowered := vehiclePowered(old), vehiclePowered(newState)
+	wasOn := engine.s.sounding(now, old)
 	rideEnded := wasPowered && !isPowered && engine.s.mode == engineRide
 	if rideEnded {
 		engine.s.mode = engineOff
@@ -186,32 +210,42 @@ func engineVehicleState(sink canSink, newState string) {
 	s := engine.s
 	engine.mu.Unlock()
 
+	engineWriteStatus(s, newState)
 	if rideEnded {
 		// No CAN frame: Tunu is losing power with the lock anyway.
 		log.Printf("engine: ride over (%s -> %s), engine sound off", old, newState)
-		engineWriteStatus(s)
 		return
 	}
-	if isPowered && !wasPowered && s.wantOn(time.Now()) {
-		log.Printf("engine: vehicle %s -> %s, re-asserting engine sound", old, newState)
-		go engineAssert(sink, s.gen, engineBootAttempts)
+	isOn := s.sounding(now, newState)
+	if !isPowered || wasOn == isOn {
+		return
 	}
+	log.Printf("engine: vehicle %s -> %s, engine sound %s", old, newState, onOff(isOn))
+	// Tunu may still be booting if the kickstand goes up right after the
+	// unlock, so allow for its boot time.
+	go engineAssert(sink, engineBootAttempts)
 }
 
 // engineAssert sends the wanted state until Tunu's Engine_Status confirms it,
-// stopping early if the state changes again or the vehicle loses power.
-func engineAssert(sink canSink, gen int, attempts int) {
+// stopping early if a newer engineAssert starts or the vehicle loses power.
+func engineAssert(sink canSink, attempts int) {
+	engine.mu.Lock()
+	engine.assertGen++
+	gen := engine.assertGen
+	engine.mu.Unlock()
 	drainEngineEcho()
 	for attempt := 1; attempt <= attempts; attempt++ {
-		s, vstate := engineSnapshot()
-		if s.gen != gen {
+		engine.mu.Lock()
+		s, vstate, current := engine.s, engine.vehicleState, engine.assertGen == gen
+		engine.mu.Unlock()
+		if !current {
 			return
 		}
 		if !vehiclePowered(vstate) {
-			log.Printf("engine: vehicle %q, not sending (Tunu is unpowered); will apply at the next unlock", vstate)
+			log.Printf("engine: vehicle %q, not sending (Tunu is unpowered)", vstate)
 			return
 		}
-		on := s.wantOn(time.Now())
+		on := s.sounding(time.Now(), vstate)
 		cmd := engineCmdOff
 		if on {
 			cmd = engineCmdOn
@@ -275,7 +309,7 @@ func engineLogState(who string, s engineState) {
 
 // engineWriteStatus publishes the wanted state into the status hash, for
 // `music engine`. Tunu's confirmation lands there separately, from canReader.
-func engineWriteStatus(s engineState) {
+func engineWriteStatus(s engineState, vehicleState string) {
 	conn, err := redisConnect(cfg.Redis.Addr)
 	if err != nil {
 		log.Printf("engine: status: redis connect failed: %v", err)
@@ -287,9 +321,10 @@ func engineWriteStatus(s engineState) {
 		until = strconv.FormatInt(s.until.Unix(), 10)
 	}
 	for k, v := range map[string]string{
-		engineStatusMode:    string(s.mode),
-		engineStatusUntil:   until,
-		engineStatusWantVol: strconv.Itoa(s.volume),
+		engineStatusMode:     string(s.mode),
+		engineStatusUntil:    until,
+		engineStatusWantVol:  strconv.Itoa(s.volume),
+		engineStatusSounding: strconv.FormatBool(s.sounding(time.Now(), vehicleState)),
 	} {
 		if err := conn.hset(statusHash, k, v, ""); err != nil {
 			log.Printf("engine: status: hset %s failed: %v", k, err)
@@ -319,6 +354,38 @@ func engineDemo(sink canSink) {
 		log.Printf("engine: demo: not yet confirmed (attempt %d/%d)", attempt, engineCmdAttempts)
 	}
 	log.Printf("engine: demo never confirmed by Engine_Status (app.lisp without the demo?)")
+}
+
+// engineEchoSeen records Tunu's latest Engine_Status for engineStopDemo.
+func engineEchoSeen(ev engineEcho) {
+	engine.mu.Lock()
+	engine.demo = ev.demo
+	engine.mu.Unlock()
+	select {
+	case engineEchoCh <- ev:
+	default:
+	}
+}
+
+// engineStopDemo ends a running demo ride (for `music stop`). Tunu only stops
+// the demo on "off", which also switches the engine sound off, so a sounding
+// engine is switched straight back on.
+func engineStopDemo(sink canSink) {
+	engine.mu.Lock()
+	demo, s, vstate := engine.demo, engine.s, engine.vehicleState
+	engine.mu.Unlock()
+	if !demo || !vehiclePowered(vstate) {
+		return
+	}
+	id, data := engineFrame(engineCmdOff, s.volume)
+	if err := sink.send(id, data); err != nil {
+		log.Printf("ctl: stop: demo stop failed: %v", err)
+		return
+	}
+	log.Printf("ctl: stop: demo ride stopped")
+	if s.sounding(time.Now(), vstate) {
+		go engineAssert(sink, engineCmdAttempts)
+	}
 }
 
 // handleEngineMsg applies "engine:<on|off|ride|for|vol>[:...]" published by
