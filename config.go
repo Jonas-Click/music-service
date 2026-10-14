@@ -61,8 +61,9 @@ type Config struct {
 	// on/off toggle and the volume. One-ride and timed modes are runtime
 	// only (engine.go).
 	EngineSound struct {
-		Enabled *bool `json:"enabled"`
-		Volume  *int  `json:"volume"`
+		Enabled *bool   `json:"enabled"`
+		Volume  *int    `json:"volume"`
+		Style   *string `json:"style"`
 	} `json:"engine_sound"`
 }
 
@@ -129,6 +130,10 @@ func loadConfig(path string) (*Config, error) {
 	if c.EngineSound.Volume == nil {
 		v := 50
 		c.EngineSound.Volume = &v
+	}
+	if c.EngineSound.Style == nil {
+		st := engineStyles[0]
+		c.EngineSound.Style = &st
 	}
 	return &c, nil
 }

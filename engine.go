@@ -29,30 +29,33 @@ const (
 )
 
 const (
-	engineRetryInterval  = 2 * time.Second
-	engineCmdAttempts    = 3 // ~6s, for interactive commands
-	engineBootAttempts   = 8 // ~16s, matches unlockMaxAttempts: Tunu boots after an unlock
-	engineStateField     = "state"
-	engineMaxDuration    = 24 * time.Hour
-	engineMinDuration    = 10 * time.Second
-	engineDefaultVolume  = 50
-	engineStatusMode     = "engine_mode"
-	engineStatusUntil    = "engine_until"
-	engineStatusWantVol  = "engine_volume_set"
-	engineStatusOn       = "engine_on"
-	engineStatusVol      = "engine_volume"
-	engineStatusUpdated  = "engine_updated"
-	engineStatusDemo     = "engine_demo"
-	engineStatusSounding = "engine_sounding"
-	vehicleStateParked   = "parked"
-	vehicleStateReady    = "ready-to-drive"
-	engineEchoBufferSize = 8
+	engineRetryInterval   = 2 * time.Second
+	engineCmdAttempts     = 3 // ~6s, for interactive commands
+	engineBootAttempts    = 8 // ~16s, matches unlockMaxAttempts: Tunu boots after an unlock
+	engineStateField      = "state"
+	engineMaxDuration     = 24 * time.Hour
+	engineMinDuration     = 10 * time.Second
+	engineDefaultVolume   = 50
+	engineStatusMode      = "engine_mode"
+	engineStatusUntil     = "engine_until"
+	engineStatusWantVol   = "engine_volume_set"
+	engineStatusOn        = "engine_on"
+	engineStatusVol       = "engine_volume"
+	engineStatusUpdated   = "engine_updated"
+	engineStatusDemo      = "engine_demo"
+	engineStatusSounding  = "engine_sounding"
+	engineStatusWantStyle = "engine_style_set"
+	engineStatusStyle     = "engine_style"
+	vehicleStateParked    = "parked"
+	vehicleStateReady     = "ready-to-drive"
+	engineEchoBufferSize  = 8
 )
 
 type engineState struct {
 	mode   engineMode
 	until  time.Time // engineTimed only
 	volume int
+	style  int // index into engineStyles
 	// gen changes on every mode change, so a timer started for an older
 	// mode can tell it has been superseded and stop.
 	gen int
@@ -92,6 +95,27 @@ type engineEcho struct {
 	on     bool
 	volume int
 	demo   bool
+	style  int // -1: not reported (older app.lisp)
+}
+
+// engineStyles are the sound styles app.lisp knows, by their Engine_Sound
+// style number (the index).
+var engineStyles = []string{"v8", "moped", "sport", "vtwin", "electric"}
+
+func engineStyleID(name string) (int, bool) {
+	for i, n := range engineStyles {
+		if n == name {
+			return i, true
+		}
+	}
+	return 0, false
+}
+
+func engineStyleName(id int) string {
+	if id >= 0 && id < len(engineStyles) {
+		return engineStyles[id]
+	}
+	return "?"
 }
 
 var engineEchoCh = make(chan engineEcho, engineEchoBufferSize)
@@ -105,6 +129,11 @@ func engineInit(c *Config) {
 	}
 	if c.EngineSound.Enabled != nil && *c.EngineSound.Enabled {
 		engine.s.mode = engineOn
+	}
+	if c.EngineSound.Style != nil {
+		if id, ok := engineStyleID(*c.EngineSound.Style); ok {
+			engine.s.style = id
+		}
 	}
 }
 
@@ -120,8 +149,10 @@ func engineToConfig(c *Config) {
 	s, _ := engineSnapshot()
 	enabled := s.mode == engineOn
 	volume := s.volume
+	style := engineStyleName(s.style)
 	c.EngineSound.Enabled = &enabled
 	c.EngineSound.Volume = &volume
+	c.EngineSound.Style = &style
 }
 
 func vehiclePowered(state string) bool {
@@ -160,6 +191,23 @@ func engineSet(sink canSink, mode engineMode, d time.Duration, volume int) {
 		return
 	}
 	go engineAssert(sink, engineCmdAttempts)
+}
+
+// engineSetStyle changes the sound style. The mode and its timer stay as they
+// are; a sounding engine switches style straight away.
+func engineSetStyle(sink canSink, id int) {
+	engine.mu.Lock()
+	engine.s.style = id
+	s, vstate := engine.s, engine.vehicleState
+	engine.mu.Unlock()
+	log.Printf("ctl: engine style -> %s", engineStyleName(id))
+	engineWriteStatus(s, vstate)
+	if err := saveConfig(configForSave(), cfgPath); err != nil {
+		log.Printf("engine: config save failed: %v", err)
+	}
+	if s.sounding(time.Now(), vstate) {
+		go engineAssert(sink, engineCmdAttempts)
+	}
 }
 
 // engineExpireAfter switches a timed engine sound off at its deadline, unless
@@ -274,12 +322,12 @@ func engineAssert(sink canSink, attempts int) {
 		if on {
 			cmd = engineCmdOn
 		}
-		id, data := engineFrame(cmd, s.volume)
+		id, data := engineFrame(cmd, s.volume, s.style)
 		if err := sink.send(id, data); err != nil {
 			log.Printf("engine: send failed (attempt %d/%d): %v", attempt, attempts, err)
 		}
 		if waitEngineEchoMatch(func(ev engineEcho) bool {
-			return ev.on == on && (!on || ev.volume == s.volume)
+			return ev.on == on && (!on || ev.volume == s.volume) && (ev.style < 0 || ev.style == s.style)
 		}, engineRetryInterval) {
 			log.Printf("engine: confirmed %s, volume %d%% (attempt %d/%d)", onOff(on), s.volume, attempt, attempts)
 			return
@@ -345,10 +393,11 @@ func engineWriteStatus(s engineState, vehicleState string) {
 		until = strconv.FormatInt(s.until.Unix(), 10)
 	}
 	for k, v := range map[string]string{
-		engineStatusMode:     string(s.mode),
-		engineStatusUntil:    until,
-		engineStatusWantVol:  strconv.Itoa(s.volume),
-		engineStatusSounding: strconv.FormatBool(s.sounding(time.Now(), vehicleState)),
+		engineStatusMode:      string(s.mode),
+		engineStatusUntil:     until,
+		engineStatusWantVol:   strconv.Itoa(s.volume),
+		engineStatusWantStyle: engineStyleName(s.style),
+		engineStatusSounding:  strconv.FormatBool(s.sounding(time.Now(), vehicleState)),
 	} {
 		if err := conn.hset(statusHash, k, v, ""); err != nil {
 			log.Printf("engine: status: hset %s failed: %v", k, err)
@@ -367,7 +416,7 @@ func engineDemo(sink canSink) {
 			log.Printf("engine: demo: vehicle %q, Tunu is unpowered — unlock the scooter first", vstate)
 			return
 		}
-		id, data := engineFrame(engineCmdDemo, s.volume)
+		id, data := engineFrame(engineCmdDemo, s.volume, s.style)
 		if err := sink.send(id, data); err != nil {
 			log.Printf("engine: demo: send failed (attempt %d/%d): %v", attempt, engineCmdAttempts, err)
 		}
@@ -401,7 +450,7 @@ func engineStopDemo(sink canSink) {
 	if !demo || !vehiclePowered(vstate) {
 		return
 	}
-	id, data := engineFrame(engineCmdOff, s.volume)
+	id, data := engineFrame(engineCmdOff, s.volume, s.style)
 	if err := sink.send(id, data); err != nil {
 		log.Printf("ctl: stop: demo stop failed: %v", err)
 		return
@@ -417,6 +466,7 @@ func engineStopDemo(sink canSink) {
 //
 //	engine:on[:vol]   engine:off   engine:ride[:vol]
 //	engine:for:<seconds>[:vol]     engine:vol:<pct>     engine:demo[:vol]
+//	engine:style:<name>
 func handleEngineMsg(sink canSink, parts []string) {
 	if len(parts) < 2 {
 		return
@@ -473,6 +523,16 @@ func handleEngineMsg(sink canSink, parts []string) {
 		}
 		s, _ := engineSnapshot()
 		engineSet(sink, s.mode, time.Until(s.until), v)
+	case "style":
+		if len(parts) < 3 {
+			return
+		}
+		id, ok := engineStyleID(parts[2])
+		if !ok {
+			log.Printf("ctl: engine: unknown style %q", parts[2])
+			return
+		}
+		engineSetStyle(sink, id)
 	default:
 		log.Printf("ctl: engine: unknown subcommand %q", parts[1])
 	}

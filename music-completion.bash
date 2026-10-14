@@ -11,7 +11,9 @@ _music_complete() {
     if [ "$first" = "play" ] && [ "$COMP_CWORD" -eq 2 ]; then
         COMPREPLY=($(compgen -W "1 2 3 4 5 6 7" -- "$cur"))
     elif [ "$first" = "engine" ] && [ "$COMP_CWORD" -eq 2 ]; then
-        COMPREPLY=($(compgen -W "on off ride for vol demo help" -- "$cur"))
+        COMPREPLY=($(compgen -W "on off ride for vol style demo help" -- "$cur"))
+    elif [ "$first" = "engine" ] && [ "$COMP_CWORD" -eq 3 ] && [ "${COMP_WORDS[2]}" = "style" ]; then
+        COMPREPLY=($(compgen -W "v8 moped sport vtwin electric" -- "$cur"))
     elif [ "$first" = "engine" ] && [ "$COMP_CWORD" -eq 3 ] && [ "${COMP_WORDS[2]}" = "for" ]; then
         COMPREPLY=($(compgen -W "1m 5m 10m 30m 1h" -- "$cur"))
     elif [ "$first" = "settings" ] && [ "$COMP_CWORD" -eq 2 ]; then

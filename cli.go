@@ -202,6 +202,16 @@ func runEngine(args []string) {
 		}
 		v := volArg(1)
 		publishAndConfirm("engine:vol:"+v, "engine volume -> "+v+"%")
+	case "style":
+		if len(args) < 2 {
+			fmt.Printf("styles: %s\n", strings.Join(engineStyles, ", "))
+			return
+		}
+		if _, ok := engineStyleID(args[1]); !ok {
+			fmt.Fprintf(os.Stderr, "unknown style %q — one of: %s\n", args[1], strings.Join(engineStyles, ", "))
+			os.Exit(1)
+		}
+		publishAndConfirm("engine:style:"+args[1], "engine style -> "+args[1])
 	case "demo":
 		v := volArg(1)
 		publishAndConfirm("engine:demo:"+v, "engine demo ride (~23 s)"+withVol(v))
@@ -264,6 +274,9 @@ func runEngineStatus() {
 	if v := f[engineStatusWantVol]; v != "" {
 		fmt.Printf("volume:   %s%%\n", v)
 	}
+	if v := f[engineStatusWantStyle]; v != "" {
+		fmt.Printf("style:    %s\n", v)
+	}
 
 	updated, _ := strconv.ParseInt(f[engineStatusUpdated], 10, 64)
 	if updated == 0 {
@@ -274,9 +287,13 @@ func runEngineStatus() {
 	if f[engineStatusDemo] == "true" {
 		demo = ", demo ride playing"
 	}
-	fmt.Printf("tunu:     %s, volume %s%%%s (confirmed %s ago)\n",
+	style := ""
+	if v := f[engineStatusStyle]; v != "" && v != "?" {
+		style = ", style " + v
+	}
+	fmt.Printf("tunu:     %s, volume %s%%%s%s (confirmed %s ago)\n",
 		map[bool]string{true: "on", false: "off"}[f[engineStatusOn] == "true"],
-		f[engineStatusVol], demo, time.Since(time.Unix(updated, 0)).Round(time.Second))
+		f[engineStatusVol], style, demo, time.Since(time.Unix(updated, 0)).Round(time.Second))
 }
 
 func runSettings(args []string) {
@@ -627,7 +644,7 @@ Commands:
                            Add your own song (one or two tracks) — see README.md
   songs remove <num>      Remove a song you added (also deletes its track files)
   settings               Show/update unlock-melody settings
-  engine                 Engine sound: on [vol] | off | ride [vol] | for <time> [vol] | vol <pct> | demo
+  engine                 Engine sound: on [vol] | off | ride [vol] | for <time> [vol] | vol <pct> | style <name> | demo
 
 Songs:
 %s
@@ -698,13 +715,16 @@ Usage:
   music engine for <time> [vol]    On for a set time, 10s to 24h: 10m, 90s, 1h
                                    (a plain number is minutes), then off
   music engine vol <0-100>         Volume only (default 50)
-  music engine demo [vol]          Play a ~23 s demo ride at a standstill (idle, full
-                                   throttle through the gears, cruise, brake). Same
-                                   sound as a real ride; "off" or
+  music engine style [name]        Sound style: v8 (default), moped, sport, vtwin,
+                                   electric; without a name, list them
+  music engine demo [vol]          Play a ~30 s demo at a standstill: start sound,
+                                   full throttle through the gears, cruise, brake,
+                                   stop sound. Same sound as a real ride; "off" or
                                    "music stop" stops it
 
-While a mode is active, the sound plays whenever the kickstand is up and
-stops when it goes down. Tunu is unpowered while locked and starts with the
+While a mode is active, the engine starts (with a start sound) when the
+kickstand goes up and stops (with a stop sound) when it goes down. Standing
+still with the brake pressed, the throttle revs it. Tunu is unpowered while locked and starts with the
 engine sound off, so the service switches it on again as needed; nothing is
 sent while the scooter is locked.
 `

@@ -10,8 +10,11 @@
   Temporary modes (`ride`, `for`) are never saved, and at every service start
   a powered Tunu is told the wanted state, so an MDB crash or reboot can't
   leave the engine sound running.
-- `music engine demo`: a 23-second demo ride at a standstill, through the same
-  sound code as a real ride. `music stop` ends it.
+- `music engine demo`: a 30-second demo at a standstill (start, ride, stop),
+  through the same sound code as a real ride. `music stop` ends it.
+- Engine start and stop sounds at kickstand up and down, revving at a
+  standstill with the brake pressed, and five styles: `music engine style
+  v8|moped|sport|vtwin|electric` (saved in config.json).
 
 ## v1.0.0 — 2026-10-12
 

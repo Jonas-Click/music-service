@@ -42,8 +42,8 @@ const (
 
 	// Engine sound: app.lisp's speed/throttle-following engine hum, switched
 	// on/off with a volume, echoed back on Engine_Status. See engine.go.
-	canIDEngine        = 0x4EA // byte0: engineCmd*, byte1: volume 0-100
-	canIDEngineStatus  = 0x7ED // Tunu -> MDB echo: byte0 on, byte1 volume%, byte2 demo playing
+	canIDEngine        = 0x4EA // byte0: engineCmd*, byte1: volume 0-100, byte2: style
+	canIDEngineStatus  = 0x7ED // Tunu -> MDB echo: byte0 on, byte1 volume%, byte2 demo playing, byte3 style
 	canEngineStatusLen = 2
 )
 
@@ -80,14 +80,14 @@ func volumeFrame(pct int) (id uint32, data []byte) {
 	return uint32(canIDVolume), []byte{byte(pct)}
 }
 
-func engineFrame(cmd, pct int) (id uint32, data []byte) {
+func engineFrame(cmd, pct, style int) (id uint32, data []byte) {
 	if pct > 100 {
 		pct = 100
 	}
 	if pct < 0 {
 		pct = 0
 	}
-	return uint32(canIDEngine), []byte{byte(cmd), byte(pct)}
+	return uint32(canIDEngine), []byte{byte(cmd), byte(pct), byte(style)}
 }
 
 func uploadBeginFrame(songNumber, trackSlot, length int, volume, decay float64) (id uint32, data []byte) {

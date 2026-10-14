@@ -78,11 +78,16 @@ Changes apply immediately — no restart needed.
 
 ## Engine sound
 
-The motor can also hum like an engine while you ride: the pitch follows your
-speed through five virtual gears and gets louder when you accelerate. Once
-switched on, it plays while the kickstand is up and stops when you put it
-down. It needs an `app.lisp` with the engine sound. Music has priority while a
-song plays.
+The motor can also sound like an engine while you ride: the pitch follows
+your speed through virtual gears and gets louder when you accelerate. Once
+switched on, the engine starts (with a start sound) when you flip the
+kickstand up and stops (with a stop sound) when you put it down. Standing
+still with the brake pressed, the throttle revs it. It needs an `app.lisp`
+with the engine sound. Music has priority while a song plays.
+
+Styles: `v8` (default), `moped` (two-stroke, kick start), `sport` (sport
+bike), `vtwin` (cruiser) and `electric` (sci-fi whine). All are equally
+loud.
 
 ```sh
 music engine ride        # on for this ride, off when you lock the scooter
@@ -90,7 +95,8 @@ music engine for 20m     # on for 20 minutes (also 90s, 1h)
 music engine on          # on until you switch it off
 music engine off
 music engine vol 60      # volume 0-100 (default 50)
-music engine demo        # hear a 23-second demo ride while standing still
+music engine style moped # sound style
+music engine demo        # hear a 30-second demo while standing still
                          # (music stop ends it)
 music engine             # show the current mode
 ```
@@ -170,7 +176,8 @@ channel `music`, and the service executes them:
 - `raw:<canid-hex>:<hexbytes>` (send an arbitrary frame)
 - `settings:<key>:<value>`
 - `engine:on[:vol]`, `engine:off`, `engine:ride[:vol]`,
-  `engine:for:<seconds>[:vol]`, `engine:vol:<0-100>`, `engine:demo[:vol]`
+  `engine:for:<seconds>[:vol]`, `engine:vol:<0-100>`, `engine:demo[:vol]`,
+  `engine:style:<name>`
 
 Songs are not stored on the controller. Before every play, the service uploads
 the song's MIDI bytes over CAN, then sends the play command. The controller
@@ -204,7 +211,7 @@ its Lisp scripts:
 | `0x4EC` | song, track, length (u16 LE), volume×10, decay×100 | upload: begin a track |
 | `0x4ED` | sequence, up to 7 data bytes | upload: chunk |
 | `0x4EE` | song, track, checksum (sum of bytes mod 256) | upload: end |
-| `0x4EA` | `0` off / `1` on / `2` demo ride, volume `0-100` | engine sound |
+| `0x4EA` | `0` off / `1` on / `2` demo ride, volume `0-100`, style `0-4` | engine sound |
 
 Replies from the controller:
 
@@ -212,7 +219,7 @@ Replies from the controller:
 |---|---|
 | `0x7E6` | playing (0/1), current song, volume % |
 | `0x7E7` | song, track, result (0 OK, 1 checksum, 2 length, 3 rejected) |
-| `0x7ED` | engine sound on (0/1), volume %, demo playing (0/1) |
+| `0x7ED` | engine sound on (0/1), volume %, demo playing (0/1), style |
 
 The bus runs at 125 kbit/s and the controller drops frames that arrive faster
 than its script can handle them, so chunks are paced 8 ms apart, and the gap
@@ -222,8 +229,9 @@ doubles on retries.
 
 Current playback state is kept in the `music` hash (`playing`, `song`, `name`,
 `volume`, `updated`). The engine sound adds the wanted state (`engine_mode`,
-`engine_until`, `engine_volume_set`, `engine_sounding`) and the controller's
-confirmation (`engine_on`, `engine_volume`, `engine_demo`, `engine_updated`).
+`engine_until`, `engine_volume_set`, `engine_style_set`, `engine_sounding`)
+and the controller's confirmation (`engine_on`, `engine_volume`,
+`engine_style`, `engine_demo`, `engine_updated`).
 The engine sound follows the `vehicle` hash's `state` field. The unlock trigger watches the `vehicle` hash: by
 default it fires when `state` changes from `stand-by` to `parked`. Ending a
 ride also leads to `parked`, which is why the previous value is checked too.
@@ -250,7 +258,8 @@ All three are configurable (`unlock.trigger_field`, `unlock.trigger_value`,
   },
   "engine_sound": {
     "enabled": false,
-    "volume": 50
+    "volume": 50,
+    "style": "v8"
   }
 }
 ```
