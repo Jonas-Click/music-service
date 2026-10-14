@@ -43,6 +43,9 @@ func runCtl(args []string) {
 	case "status":
 		runStatus()
 		return
+	case "engine":
+		runEngine(args[1:])
+		return
 	case "songs":
 		if len(args) >= 2 && args[1] == "add" {
 			runSongsAdd(args[2:], songsPath)
@@ -144,6 +147,122 @@ func runStatus() {
 		fmt.Printf("song:     %s (%s)\n", fields["song"], fields["name"])
 	}
 	fmt.Printf("volume:   %s%%\n", fields["volume"])
+}
+
+// runEngine handles `music engine [on [vol] | off | ride [vol] | for <dur> [vol]
+// | vol <pct>]`; with no arguments it shows the current state.
+func runEngine(args []string) {
+	if len(args) == 0 {
+		runEngineStatus()
+		return
+	}
+	volArg := func(i int) string {
+		if len(args) <= i {
+			return ""
+		}
+		v, err := strconv.Atoi(args[i])
+		if err != nil || v < 0 || v > 100 {
+			fmt.Fprintln(os.Stderr, "volume must be 0-100")
+			os.Exit(1)
+		}
+		return strconv.Itoa(v)
+	}
+	withVol := func(v string) string {
+		if v == "" {
+			return ""
+		}
+		return fmt.Sprintf(", volume %s%%", v)
+	}
+	switch args[0] {
+	case "on":
+		v := volArg(1)
+		publishAndConfirm("engine:on:"+v, "engine sound on until switched off"+withVol(v))
+	case "off":
+		publishAndConfirm("engine:off", "engine sound off")
+	case "ride":
+		v := volArg(1)
+		publishAndConfirm("engine:ride:"+v, "engine sound on until the scooter is locked"+withVol(v))
+	case "for":
+		if len(args) < 2 {
+			fmt.Fprintln(os.Stderr, "usage: music engine for <duration, e.g. 10m, 90s, 1h; a plain number is minutes> [vol]")
+			os.Exit(1)
+		}
+		d, err := parseEngineDuration(args[1])
+		if err != nil || d < engineMinDuration || d > engineMaxDuration {
+			fmt.Fprintf(os.Stderr, "duration must be between %s and %s (e.g. 10m, 90s, 1h)\n", engineMinDuration, engineMaxDuration)
+			os.Exit(1)
+		}
+		v := volArg(2)
+		publishAndConfirm(fmt.Sprintf("engine:for:%d:%s", int(d.Seconds()), v),
+			fmt.Sprintf("engine sound on for %s%s", d, withVol(v)))
+	case "vol":
+		if len(args) < 2 {
+			fmt.Fprintln(os.Stderr, "usage: music engine vol <0-100>")
+			os.Exit(1)
+		}
+		v := volArg(1)
+		publishAndConfirm("engine:vol:"+v, "engine volume -> "+v+"%")
+	case "help", "--help", "-h":
+		fmt.Print(engineUsage)
+	default:
+		fmt.Fprintf(os.Stderr, "unknown engine command: %q\n\n%s", args[0], engineUsage)
+		os.Exit(1)
+	}
+}
+
+// parseEngineDuration accepts Go durations ("10m", "90s", "1h30m") and a plain
+// number, which means minutes.
+func parseEngineDuration(s string) (time.Duration, error) {
+	if n, err := strconv.Atoi(s); err == nil {
+		return time.Duration(n) * time.Minute, nil
+	}
+	return time.ParseDuration(s)
+}
+
+func runEngineStatus() {
+	addr := "127.0.0.1:6379"
+	if c, err := loadConfig(cfgPath); err == nil {
+		addr = c.Redis.Addr
+	}
+	conn, err := redisConnect(addr)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "cannot connect to Redis at %s: %v\n", addr, err)
+		os.Exit(1)
+	}
+	defer conn.close()
+	f, err := conn.hgetall(statusHash)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "error reading status: %v\n", err)
+		os.Exit(1)
+	}
+
+	mode := f[engineStatusMode]
+	switch mode {
+	case "":
+		fmt.Println("mode:     unknown (is music-service running?)")
+	case string(engineTimed):
+		until, _ := strconv.ParseInt(f[engineStatusUntil], 10, 64)
+		left := time.Until(time.Unix(until, 0)).Round(time.Second)
+		fmt.Printf("mode:     on for a set time, %s left (until %s)\n", left, time.Unix(until, 0).Format("15:04:05"))
+	case string(engineRide):
+		fmt.Println("mode:     on for this ride (off when locked)")
+	case string(engineOn):
+		fmt.Println("mode:     on until switched off")
+	default:
+		fmt.Println("mode:     off")
+	}
+	if v := f[engineStatusWantVol]; v != "" {
+		fmt.Printf("volume:   %s%%\n", v)
+	}
+
+	updated, _ := strconv.ParseInt(f[engineStatusUpdated], 10, 64)
+	if updated == 0 {
+		fmt.Println("tunu:     no Engine_Status echo yet (Tunu off, or its app.lisp has no engine sound)")
+		return
+	}
+	fmt.Printf("tunu:     %s, volume %s%% (confirmed %s ago)\n",
+		map[bool]string{true: "on", false: "off"}[f[engineStatusOn] == "true"],
+		f[engineStatusVol], time.Since(time.Unix(updated, 0)).Round(time.Second))
 }
 
 func runSettings(args []string) {
@@ -494,6 +613,7 @@ Commands:
                            Add your own song (one or two tracks) — see README.md
   songs remove <num>      Remove a song you added (also deletes its track files)
   settings               Show/update unlock-melody settings
+  engine                 Engine sound: on [vol] | off | ride [vol] | for <time> [vol] | vol <pct>
 
 Songs:
 %s
@@ -511,6 +631,8 @@ Examples:
   music settings unlock.enabled true
   music settings unlock.song 5
   music settings unlock.duration 10
+  music engine ride        engine sound for this ride, off when locked
+  music engine for 20m 60  engine sound for 20 minutes at 60%%
 
 Use "music settings --help" for the full settings reference.
 `
@@ -546,4 +668,21 @@ restart the service to change them.
 
 Flags:
   -h, --help   help for settings
+`
+
+const engineUsage = `Engine sound: a hum on the motor that follows speed and throttle,
+with five virtual gears. Music has priority while a song plays. Needs an
+app.lisp with the engine sound (Engine_Sound 0x4EA / Engine_Status 0x7ED).
+
+Usage:
+  music engine                     Show mode, volume and Tunu's confirmation
+  music engine on [vol]            On until switched off (survives restarts)
+  music engine off                 Off
+  music engine ride [vol]          On for this ride, off when the scooter is locked
+  music engine for <time> [vol]    On for a set time: 10m, 90s, 1h (a plain number
+                                   is minutes), then off
+  music engine vol <0-100>         Volume only (default 50)
+
+Tunu is unpowered while locked and starts with the engine sound off, so the
+service switches it back on after every unlock while a mode is active.
 `

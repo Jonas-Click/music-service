@@ -67,6 +67,13 @@ func redisWatchLoop(sink canSink) error {
 	if vals, err := cmdConn.hmget(vehicleHash, triggerField); err == nil && len(vals) >= 1 {
 		lastVehicleField[triggerField] = vals[0]
 	}
+	// The engine sound follows the vehicle state too; seeding it here also
+	// asserts a wanted engine sound if Tunu is already powered.
+	if vals, err := cmdConn.hmget(vehicleHash, engineStateField); err == nil && len(vals) >= 1 {
+		engineVehicleState(sink, vals[0])
+	}
+	s, _ := engineSnapshot()
+	engineWriteStatus(s)
 
 	channels := []string{"SUBSCRIBE", cmdChannel, vehicleChan}
 	subConn.setTimeout(cmdTimeout)
@@ -122,6 +129,11 @@ func redisWatchLoop(sink canSink) error {
 var lastVehicleField = map[string]string{}
 
 func handleVehicleField(sink canSink, cmdConn *redisConn, field string) {
+	if field == engineStateField {
+		if vals, err := cmdConn.hmget(vehicleHash, field); err == nil && len(vals) >= 1 {
+			engineVehicleState(sink, vals[0])
+		}
+	}
 	s := live.get()
 	if field != s.unlockTriggerField {
 		return
@@ -537,6 +549,9 @@ func handleCommand(sink canSink, cmdConn *redisConn, payload string) {
 
 	case "settings":
 		handleSettingsMsg(parts)
+
+	case "engine":
+		handleEngineMsg(sink, strings.Split(payload, ":"))
 	}
 }
 
@@ -673,6 +688,24 @@ func canReader(sink canSink) {
 			select {
 			case uploadAckCh <- uploadAckEvent{songNumber: int(data[0]), trackSlot: int(data[1]), result: int(data[2])}:
 			default:
+			}
+			continue
+		}
+
+		if id == canIDEngineStatus && len(data) >= canEngineStatusLen {
+			on, volume := data[0] != 0, int(data[1])
+			select {
+			case engineEchoCh <- engineEcho{on: on, volume: volume}:
+			default:
+			}
+			for k, v := range map[string]string{
+				engineStatusOn:      strconv.FormatBool(on),
+				engineStatusVol:     strconv.Itoa(volume),
+				engineStatusUpdated: strconv.FormatInt(time.Now().Unix(), 10),
+			} {
+				if err := cmdConn.hset(statusHash, k, v, ""); err != nil {
+					log.Printf("status: hset %s failed: %v", k, err)
+				}
 			}
 			continue
 		}

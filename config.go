@@ -57,6 +57,13 @@ type Config struct {
 		// field being absent (meaning: apply the "stand-by" default).
 		TriggerFrom *string `json:"trigger_from"`
 	} `json:"unlock_melody"`
+	// EngineSound holds the persistent part of the engine-sound state: the
+	// on/off toggle and the volume. One-ride and timed modes are runtime
+	// only (engine.go).
+	EngineSound struct {
+		Enabled *bool `json:"enabled"`
+		Volume  *int  `json:"volume"`
+	} `json:"engine_sound"`
 }
 
 var (
@@ -114,6 +121,14 @@ func loadConfig(path string) (*Config, error) {
 	if c.UnlockMelody.TriggerFrom == nil {
 		f := "stand-by"
 		c.UnlockMelody.TriggerFrom = &f
+	}
+	if c.EngineSound.Enabled == nil {
+		f := false
+		c.EngineSound.Enabled = &f
+	}
+	if c.EngineSound.Volume == nil {
+		v := 50
+		c.EngineSound.Volume = &v
 	}
 	return &c, nil
 }

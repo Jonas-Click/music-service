@@ -80,5 +80,6 @@ func configForSave() *Config {
 	c.UnlockMelody.TriggerValue = s.unlockTriggerValue
 	triggerFrom := s.unlockTriggerFrom
 	c.UnlockMelody.TriggerFrom = &triggerFrom
+	engineToConfig(&c)
 	return &c
 }

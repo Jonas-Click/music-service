@@ -39,6 +39,12 @@ const (
 	// fails fast with a clear message) and implicitly by Tunu rejecting an
 	// oversized Upload_Begin.
 	maxSongBytes = 2048
+
+	// Engine sound: app.lisp's speed/throttle-following engine hum, switched
+	// on/off with a volume, echoed back on Engine_Status. See engine.go.
+	canIDEngine        = 0x4EA // byte0: 0 off / 1 on, byte1: volume 0-100
+	canIDEngineStatus  = 0x7ED // Tunu -> MDB echo: byte0 on, byte1 volume%
+	canEngineStatusLen = 2
 )
 
 // Upload result codes, matching app.lisp's send-upload-status exactly.
@@ -65,6 +71,20 @@ func volumeFrame(pct int) (id uint32, data []byte) {
 		pct = 0
 	}
 	return uint32(canIDVolume), []byte{byte(pct)}
+}
+
+func engineFrame(on bool, pct int) (id uint32, data []byte) {
+	if pct > 100 {
+		pct = 100
+	}
+	if pct < 0 {
+		pct = 0
+	}
+	b := byte(0)
+	if on {
+		b = 1
+	}
+	return uint32(canIDEngine), []byte{b, byte(pct)}
 }
 
 func uploadBeginFrame(songNumber, trackSlot, length int, volume, decay float64) (id uint32, data []byte) {

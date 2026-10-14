@@ -60,7 +60,7 @@ func main() {
 		case "ctl":
 			runCtl(args[1:])
 			return
-		case "play", "stop", "vol", "raw", "status", "songs", "settings", "help", "--help", "-h", "--version", "-v", "version":
+		case "play", "stop", "vol", "raw", "status", "songs", "settings", "engine", "help", "--help", "-h", "--version", "-v", "version":
 			// Bare invocation (no "ctl") also works as the CLI — matches
 			// music.sh's old `music.sh play|stop|vol|raw` usage so existing
 			// muscle memory and scripts keep working.
@@ -92,6 +92,7 @@ func main() {
 		os.Exit(1)
 	}
 	live.init(cfg)
+	engineInit(cfg)
 
 	songsPath := filepath.Join(filepath.Dir(cfgPath), "songs.json")
 	if err := loadSongs(songsPath); err != nil {

@@ -75,6 +75,21 @@ music settings unlock.duration 10    # stop after 10 seconds (0 = play it all)
 
 Changes apply immediately — no restart needed.
 
+## Engine sound
+
+The motor can also hum like an engine while you ride: the pitch follows your
+speed through five virtual gears and gets louder when you accelerate. It needs
+an `app.lisp` with the engine sound. Music has priority while a song plays.
+
+```sh
+music engine ride        # on for this ride, off when you lock the scooter
+music engine for 20m     # on for 20 minutes (also 90s, 1h)
+music engine on          # on until you switch it off
+music engine off
+music engine vol 60      # volume 0-100 (default 50)
+music engine             # show the current mode
+```
+
 ## Songs
 
 These songs come built in:
@@ -169,6 +184,7 @@ its Lisp scripts:
 | `0x4EC` | song, track, length (u16 LE), volume×10, decay×100 | upload: begin a track |
 | `0x4ED` | sequence, up to 7 data bytes | upload: chunk |
 | `0x4EE` | song, track, checksum (sum of bytes mod 256) | upload: end |
+| `0x4EA` | `0`/`1` engine sound off/on, volume `0-100` | engine sound |
 
 Replies from the controller:
 
@@ -176,6 +192,7 @@ Replies from the controller:
 |---|---|
 | `0x7E6` | playing (0/1), current song, volume % |
 | `0x7E7` | song, track, result (0 OK, 1 checksum, 2 length, 3 rejected) |
+| `0x7ED` | engine sound on (0/1), volume % |
 
 The bus runs at 125 kbit/s and the controller drops frames that arrive faster
 than its script can handle them, so chunks are paced 8 ms apart, and the gap
