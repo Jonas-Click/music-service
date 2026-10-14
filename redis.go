@@ -694,13 +694,15 @@ func canReader(sink canSink) {
 
 		if id == canIDEngineStatus && len(data) >= canEngineStatusLen {
 			on, volume := data[0] != 0, int(data[1])
+			demo := len(data) >= 3 && data[2] != 0
 			select {
-			case engineEchoCh <- engineEcho{on: on, volume: volume}:
+			case engineEchoCh <- engineEcho{on: on, volume: volume, demo: demo}:
 			default:
 			}
 			for k, v := range map[string]string{
 				engineStatusOn:      strconv.FormatBool(on),
 				engineStatusVol:     strconv.Itoa(volume),
+				engineStatusDemo:    strconv.FormatBool(demo),
 				engineStatusUpdated: strconv.FormatInt(time.Now().Unix(), 10),
 			} {
 				if err := cmdConn.hset(statusHash, k, v, ""); err != nil {

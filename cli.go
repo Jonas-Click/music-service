@@ -202,6 +202,9 @@ func runEngine(args []string) {
 		}
 		v := volArg(1)
 		publishAndConfirm("engine:vol:"+v, "engine volume -> "+v+"%")
+	case "demo":
+		v := volArg(1)
+		publishAndConfirm("engine:demo:"+v, "engine demo ride (~23 s)"+withVol(v))
 	case "help", "--help", "-h":
 		fmt.Print(engineUsage)
 	default:
@@ -260,9 +263,13 @@ func runEngineStatus() {
 		fmt.Println("tunu:     no Engine_Status echo yet (Tunu off, or its app.lisp has no engine sound)")
 		return
 	}
-	fmt.Printf("tunu:     %s, volume %s%% (confirmed %s ago)\n",
+	demo := ""
+	if f[engineStatusDemo] == "true" {
+		demo = ", demo ride playing"
+	}
+	fmt.Printf("tunu:     %s, volume %s%%%s (confirmed %s ago)\n",
 		map[bool]string{true: "on", false: "off"}[f[engineStatusOn] == "true"],
-		f[engineStatusVol], time.Since(time.Unix(updated, 0)).Round(time.Second))
+		f[engineStatusVol], demo, time.Since(time.Unix(updated, 0)).Round(time.Second))
 }
 
 func runSettings(args []string) {
@@ -613,7 +620,7 @@ Commands:
                            Add your own song (one or two tracks) — see README.md
   songs remove <num>      Remove a song you added (also deletes its track files)
   settings               Show/update unlock-melody settings
-  engine                 Engine sound: on [vol] | off | ride [vol] | for <time> [vol] | vol <pct>
+  engine                 Engine sound: on [vol] | off | ride [vol] | for <time> [vol] | vol <pct> | demo
 
 Songs:
 %s
@@ -682,6 +689,9 @@ Usage:
   music engine for <time> [vol]    On for a set time: 10m, 90s, 1h (a plain number
                                    is minutes), then off
   music engine vol <0-100>         Volume only (default 50)
+  music engine demo [vol]          Play a ~23 s demo ride at a standstill (idle, full
+                                   throttle through the gears, cruise, brake). Same
+                                   sound as a real ride; "off" stops it
 
 Tunu is unpowered while locked and starts with the engine sound off, so the
 service switches it back on after every unlock while a mode is active.

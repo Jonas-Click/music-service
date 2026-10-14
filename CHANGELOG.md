@@ -6,6 +6,8 @@
   switched off, for one ride, or for a set time. Re-applied after every unlock
   (Tunu boots with it off) and only sent while Tunu is powered. Needs an
   `app.lisp` with Engine_Sound (`0x4EA`) / Engine_Status (`0x7ED`).
+- `music engine demo`: a 23-second demo ride at a standstill, through the same
+  sound code as a real ride.
 
 ## v1.0.0 — 2026-10-12
 

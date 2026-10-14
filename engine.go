@@ -40,6 +40,7 @@ const (
 	engineStatusOn       = "engine_on"
 	engineStatusVol      = "engine_volume"
 	engineStatusUpdated  = "engine_updated"
+	engineStatusDemo     = "engine_demo"
 	vehicleStateParked   = "parked"
 	vehicleStateReady    = "ready-to-drive"
 	engineEchoBufferSize = 8
@@ -76,6 +77,7 @@ var engine struct {
 type engineEcho struct {
 	on     bool
 	volume int
+	demo   bool
 }
 
 var engineEchoCh = make(chan engineEcho, engineEchoBufferSize)
@@ -116,6 +118,7 @@ func vehiclePowered(state string) bool {
 // one), saves the persistent part, and asserts it on Tunu if it is powered.
 func engineSet(sink canSink, mode engineMode, d time.Duration, volume int) {
 	engine.mu.Lock()
+	wasOn := engine.s.wantOn(time.Now())
 	engine.s.mode = mode
 	engine.s.until = time.Time{}
 	if mode == engineTimed {
@@ -135,6 +138,11 @@ func engineSet(sink canSink, mode engineMode, d time.Duration, volume int) {
 	engineWriteStatus(s)
 	if err := saveConfig(configForSave(), cfgPath); err != nil {
 		log.Printf("engine: config save failed: %v", err)
+	}
+	// Off before and after (e.g. only the volume changed): nothing to tell
+	// Tunu. Sending "off" anyway would also stop a running demo ride.
+	if !wasOn && !s.wantOn(time.Now()) {
+		return
 	}
 	go engineAssert(sink, s.gen, engineCmdAttempts)
 }
@@ -204,11 +212,17 @@ func engineAssert(sink canSink, gen int, attempts int) {
 			return
 		}
 		on := s.wantOn(time.Now())
-		id, data := engineFrame(on, s.volume)
+		cmd := engineCmdOff
+		if on {
+			cmd = engineCmdOn
+		}
+		id, data := engineFrame(cmd, s.volume)
 		if err := sink.send(id, data); err != nil {
 			log.Printf("engine: send failed (attempt %d/%d): %v", attempt, attempts, err)
 		}
-		if waitEngineEcho(on, s.volume, engineRetryInterval) {
+		if waitEngineEchoMatch(func(ev engineEcho) bool {
+			return ev.on == on && (!on || ev.volume == s.volume)
+		}, engineRetryInterval) {
 			log.Printf("engine: confirmed %s, volume %d%% (attempt %d/%d)", onOff(on), s.volume, attempt, attempts)
 			return
 		}
@@ -227,12 +241,12 @@ func drainEngineEcho() {
 	}
 }
 
-func waitEngineEcho(on bool, volume int, d time.Duration) bool {
+func waitEngineEchoMatch(match func(engineEcho) bool, d time.Duration) bool {
 	deadline := time.After(d)
 	for {
 		select {
 		case ev := <-engineEchoCh:
-			if ev.on == on && (!on || ev.volume == volume) {
+			if match(ev) {
 				return true
 			}
 		case <-deadline:
@@ -283,11 +297,35 @@ func engineWriteStatus(s engineState) {
 	}
 }
 
+// engineDemo plays app.lisp's demo ride once (~23 s): the same sound code as a
+// real ride, fed by a scripted speed and throttle. It leaves the on/off mode as
+// it is. Only sent while Tunu is powered.
+func engineDemo(sink canSink) {
+	drainEngineEcho()
+	for attempt := 1; attempt <= engineCmdAttempts; attempt++ {
+		s, vstate := engineSnapshot()
+		if !vehiclePowered(vstate) {
+			log.Printf("engine: demo: vehicle %q, Tunu is unpowered — unlock the scooter first", vstate)
+			return
+		}
+		id, data := engineFrame(engineCmdDemo, s.volume)
+		if err := sink.send(id, data); err != nil {
+			log.Printf("engine: demo: send failed (attempt %d/%d): %v", attempt, engineCmdAttempts, err)
+		}
+		if waitEngineEchoMatch(func(ev engineEcho) bool { return ev.demo }, engineRetryInterval) {
+			log.Printf("engine: demo ride playing, volume %d%%", s.volume)
+			return
+		}
+		log.Printf("engine: demo: not yet confirmed (attempt %d/%d)", attempt, engineCmdAttempts)
+	}
+	log.Printf("engine: demo never confirmed by Engine_Status (app.lisp without the demo?)")
+}
+
 // handleEngineMsg applies "engine:<on|off|ride|for|vol>[:...]" published by
 // `music engine`:
 //
 //	engine:on[:vol]   engine:off   engine:ride[:vol]
-//	engine:for:<seconds>[:vol]     engine:vol:<pct>
+//	engine:for:<seconds>[:vol]     engine:vol:<pct>     engine:demo[:vol]
 func handleEngineMsg(sink canSink, parts []string) {
 	if len(parts) < 2 {
 		return
@@ -327,6 +365,16 @@ func handleEngineMsg(sink canSink, parts []string) {
 		if v, ok := vol(3); ok {
 			engineSet(sink, engineTimed, d, v)
 		}
+	case "demo":
+		v, ok := vol(2)
+		if !ok {
+			return
+		}
+		if v >= 0 {
+			s, _ := engineSnapshot()
+			engineSet(sink, s.mode, time.Until(s.until), v)
+		}
+		go engineDemo(sink)
 	case "vol":
 		v, ok := vol(2)
 		if !ok || v < 0 {
