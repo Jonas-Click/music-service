@@ -95,6 +95,7 @@ func main() {
 	engineInit(cfg)
 
 	songsPath := filepath.Join(filepath.Dir(cfgPath), "songs.json")
+	syncDefaultSongsAtStart(songsPath)
 	if err := loadSongs(songsPath); err != nil {
 		log.Printf("error: %v", err)
 		os.Exit(1)

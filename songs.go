@@ -2,13 +2,11 @@ package main
 
 // The song catalog: metadata (number, name, track files) describing what
 // music-service can play. Defaults ship embedded in the binary (songs.json
-// + songs/*.bin, go:embed'd below) and get written out to
-// /data/music-service/{songs.json,songs/} on first run if not already
-// present, so a fresh install works with no manual step. After that, the
-// files on disk are authoritative — add your own song by editing
-// songs.json and dropping a .bin file (raw decoded MIDI bytes) into
-// songs/, which is how you add an additional song locally without ever
-// needing to publish it (see README.md).
+// + songs/*.bin, go:embed'd below) and are written out to
+// /data/music-service/{songs.json,songs/} on a fresh install; after that the
+// files on disk are authoritative, and new or improved defaults from later
+// releases are merged in without touching the user's own songs (see
+// songs_defaults.go). Add your own song with `music songs add` (README.md).
 //
 // Every song is streamed to Tunu over CAN immediately before playing,
 // except "source": "builtin-package" entries (Axel F) — Tunu plays those
@@ -25,7 +23,6 @@ import (
 	"embed"
 	"encoding/json"
 	"fmt"
-	"io/fs"
 	"os"
 	"path/filepath"
 	"sort"
@@ -47,6 +44,9 @@ type Song struct {
 	Name   string      `json:"name"`
 	Source string      `json:"source,omitempty"` // "builtin-package" for Axel F; empty = streamed
 	Tracks []SongTrack `json:"tracks,omitempty"`
+	// Default is the key of a shipped default song (songs_defaults.go);
+	// empty for the user's own songs.
+	Default string `json:"default,omitempty"`
 }
 
 var (
@@ -55,13 +55,11 @@ var (
 )
 
 // loadSongs reads the song catalog from path (a songs.json sidecar next to
-// config.json), writing out the embedded defaults first if path doesn't
-// exist yet — the same "apply defaults for what's missing" posture as
-// loadConfig, just at the file level instead of the field level, since a
-// whole song pack doesn't fit config.json's scalar-only shape.
+// config.json), installing the embedded defaults first if path doesn't exist
+// yet (a fresh install).
 func loadSongs(path string) error {
 	if _, err := os.Stat(path); os.IsNotExist(err) {
-		if err := writeDefaultSongs(path); err != nil {
+		if _, err := syncDefaultSongs(filepath.Dir(path), embeddedSongs); err != nil {
 			return fmt.Errorf("writing default song pack: %w", err)
 		}
 	}
@@ -83,34 +81,6 @@ func loadSongs(path string) error {
 	songCatalog = catalog
 	songsDir = filepath.Join(filepath.Dir(path), "songs")
 	return nil
-}
-
-// writeDefaultSongs extracts the embedded default song pack (songs.json +
-// songs/*.bin) next to path, for a fresh install with no customization yet.
-func writeDefaultSongs(path string) error {
-	dir := filepath.Dir(path)
-	if err := os.MkdirAll(filepath.Join(dir, "songs"), 0755); err != nil {
-		return err
-	}
-
-	data, err := embeddedSongs.ReadFile("songs.json")
-	if err != nil {
-		return err
-	}
-	if err := os.WriteFile(path, data, 0644); err != nil {
-		return err
-	}
-
-	return fs.WalkDir(embeddedSongs, "songs", func(p string, d fs.DirEntry, err error) error {
-		if err != nil || d.IsDir() {
-			return err
-		}
-		content, err := embeddedSongs.ReadFile(p)
-		if err != nil {
-			return err
-		}
-		return os.WriteFile(filepath.Join(dir, p), content, 0644)
-	})
 }
 
 func songByNumber(n int) (Song, bool) {
@@ -148,15 +118,18 @@ func songTrackBytes(t SongTrack) ([]byte, error) {
 }
 
 // saveSongs writes the in-memory catalog back to path — used by `music
-// songs add`. A plain write, not config.go's atomic temp-file+rename
-// dance: this only ever runs interactively, once, from a terminal, so a
-// power loss mid-write just means re-running the command, not a daemon
-// that silently fails to start on next boot.
+// songs add` and `remove`.
 func saveSongs(path string) error {
-	data, err := json.MarshalIndent(songCatalog, "", "  ")
+	return writeSongsFile(path, songCatalog)
+}
+
+// writeSongsFile writes a catalog atomically: the service rewrites songs.json
+// at start when defaults change, and a power loss mid-write must not leave a
+// file it can't parse.
+func writeSongsFile(path string, catalog []Song) error {
+	data, err := json.MarshalIndent(catalog, "", "  ")
 	if err != nil {
 		return err
 	}
-	data = append(data, '\n')
-	return os.WriteFile(path, data, 0644)
+	return writeFileAtomic(path, append(data, '\n'))
 }

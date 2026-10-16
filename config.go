@@ -148,10 +148,14 @@ func saveConfig(c *Config, path string) error {
 	if err != nil {
 		return err
 	}
-	data = append(data, '\n')
+	return writeFileAtomic(path, append(data, '\n'))
+}
 
+// writeFileAtomic writes data to path via a temp file in the same directory,
+// fsync and rename, so a power loss leaves either the old or the new file.
+func writeFileAtomic(path string, data []byte) error {
 	dir := filepath.Dir(path)
-	tmp, err := os.CreateTemp(dir, ".config-*.json")
+	tmp, err := os.CreateTemp(dir, "."+filepath.Base(path)+"-*")
 	if err != nil {
 		return err
 	}

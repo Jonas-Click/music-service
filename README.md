@@ -148,6 +148,15 @@ systemctl restart music-service
 
 If it was your unlock song, you'll be reminded to pick another one.
 
+### Updates and your songs
+
+Updates never touch your own songs or their numbers. New built-in songs in a
+later release get the next free number after your highest one (with your own
+songs at 5 and 6, new ones become 7, 8, ...). A built-in song you removed stays
+removed, and an improved version of a built-in song only replaces the old one
+if you haven't changed its file. What was added is in the service log
+(`journalctl -u music-service`).
+
 ## Troubleshooting
 
 - **Nothing plays / `music status` says "stale":** the motor controller isn't
@@ -269,6 +278,16 @@ All three are configurable (`unlock.trigger_field`, `unlock.trigger_value`,
 with `music engine`. The song catalog is
 `songs.json` next to it, with the track files in `songs/`.
 
+Built-in songs carry a `"default"` key in `songs.json` (and `"since"`, the
+release that first shipped them, in the embedded copy). At every start the
+service merges the embedded ones in: a key it hasn't offered before is added
+under the next free number, existing entries are never renumbered or removed,
+and a track file is only replaced if its checksum still matches what was
+installed. What has been offered, with those checksums, is kept in
+`songs-defaults.json`. To ship a new built-in song, add an entry with a new
+key and `"since"` to the embedded `songs.json` and its files to `songs/`; the
+number there is only used on a fresh install.
+
 ### Build
 
 Go 1.21 or later, no external dependencies.
@@ -295,6 +314,7 @@ Releases are built by CI when a version tag is pushed.
 | `main.go` | startup, arguments, signals |
 | `config.go` / `settings.go` | config file and live unlock settings |
 | `songs.go`, `songs.json`, `songs/` | song catalog and the built-in songs (embedded at build time) |
+| `songs_defaults.go` | merging new and improved built-in songs into an existing catalog |
 | `can.go` | frame building, upload framing, checksum |
 | `can_linux.go` / `can_dev.go` / `can_other.go` | SocketCAN, development sinks, non-Linux stub |
 | `redis.go` | command execution, uploads, unlock trigger, status |

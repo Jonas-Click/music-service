@@ -15,6 +15,10 @@
 - Engine start and stop sounds at kickstand up and down, revving at a
   standstill with the brake pressed, and five styles: `music engine style
   v8|moped|sport|vtwin|electric` (saved in config.json).
+- Updates keep your own songs: new built-in songs get the next free number
+  after your highest one, removed built-in songs stay removed, and improved
+  built-in songs only replace files you haven't changed
+  (`songs-defaults.json`). `songs.json` is now written atomically.
 
 ## v1.0.0 — 2026-10-12
 
