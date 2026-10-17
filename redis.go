@@ -636,119 +636,43 @@ func sendVolume(sink canSink, pct int) error {
 // settings <key> <value>`.
 // setMusicVolume sends the master volume and saves it as the music volume.
 func setMusicVolume(sink canSink, pct int) {
+	applyMusicVolumeSetting(sink, pct)
+	saveSettings()
+}
+
+// applyMusicVolumeSetting is setMusicVolume without saving.
+func applyMusicVolumeSetting(sink canSink, pct int) {
 	if err := sendVolume(sink, pct); err != nil {
 		log.Printf("ctl: vol %d failed: %v", pct, err)
 	}
 	live.update(func(s *settings) { s.musicVolume = pct })
 	log.Printf("ctl: vol -> %d%%", pct)
-	if err := saveConfig(configForSave(), cfgPath); err != nil {
-		log.Printf("settings: save failed: %v", err)
-	}
 }
 
+// handleSettingsMsg applies "settings:<key>:<value>" published by `music
+// settings <key> <value>`: every setting goes through the registry
+// (settings_registry.go) and is saved once, through the one save path.
 func handleSettingsMsg(sink canSink, parts []string) {
 	if len(parts) < 3 {
 		return
 	}
 	key, value := parts[1], parts[2]
-
-	switch key {
-	case "music.volume":
-		n, err := strconv.Atoi(value)
-		if err != nil || n < 0 || n > 100 {
-			log.Printf("settings: music.volume: invalid value %q", value)
-			return
-		}
-		setMusicVolume(sink, n) // saves
-		return
-
-	case "engine.enabled":
-		if value == "true" {
-			engineSet(sink, engineOn, 0, -1) // saves
-		} else {
-			engineSet(sink, engineOff, 0, -1)
-		}
-		return
-
-	case "engine.volume":
-		n, err := strconv.Atoi(value)
-		if err != nil || n < 0 || n > 100 {
-			log.Printf("settings: engine.volume: invalid value %q", value)
-			return
-		}
-		s, _ := engineSnapshot()
-		engineSet(sink, s.mode, time.Until(s.until), n) // saves
-		return
-
-	case "engine.style":
-		id, ok := engineStyleID(value)
-		if !ok {
-			log.Printf("settings: engine.style: unknown style %q", value)
-			return
-		}
-		engineSetStyle(sink, id) // saves
-		return
-
-	case "unlock.enabled":
-		b := value == "true"
-		live.update(func(s *settings) { s.unlockEnabled = b })
-		log.Printf("settings: unlock.enabled -> %v", b)
-
-	case "unlock.song":
-		n, err := strconv.Atoi(value)
-		if err != nil || !validSong(n) {
-			log.Printf("settings: unlock.song: invalid value %q", value)
-			return
-		}
-		live.update(func(s *settings) { s.unlockSong = n })
-		log.Printf("settings: unlock.song -> %d (%s)", n, songName(n))
-
-	case "unlock.volume":
-		n, err := strconv.Atoi(value)
-		if err != nil || n < 0 || n > 100 {
-			log.Printf("settings: unlock.volume: invalid value %q", value)
-			return
-		}
-		live.update(func(s *settings) { s.unlockVolume = n })
-		log.Printf("settings: unlock.volume -> %d", n)
-
-	case "unlock.duration":
-		n, err := strconv.Atoi(value)
-		if err != nil || n < 0 || n > 300 {
-			log.Printf("settings: unlock.duration: invalid value %q (0-300)", value)
-			return
-		}
-		live.update(func(s *settings) { s.unlockDurationSeconds = n })
-		if n == 0 {
-			log.Printf("settings: unlock.duration -> 0 (play to completion, no auto-stop)")
-		} else {
-			log.Printf("settings: unlock.duration -> %ds", n)
-		}
-
-	case "unlock.trigger_field":
-		live.update(func(s *settings) { s.unlockTriggerField = value })
-		log.Printf("settings: unlock.trigger_field -> %s (takes effect after a reconnect/restart)", value)
-
-	case "unlock.trigger_value":
-		live.update(func(s *settings) { s.unlockTriggerValue = value })
-		log.Printf("settings: unlock.trigger_value -> %s", value)
-
-	case "unlock.trigger_from":
-		live.update(func(s *settings) { s.unlockTriggerFrom = value })
-		if value == "" {
-			log.Printf("settings: unlock.trigger_from -> (any) — fires on any transition into trigger_value")
-		} else {
-			log.Printf("settings: unlock.trigger_from -> %s", value)
-		}
-
-	default:
+	def, ok := settingByKey(key)
+	if !ok {
 		log.Printf("settings: unknown key %q", key)
 		return
 	}
-
-	if err := saveConfig(configForSave(), cfgPath); err != nil {
-		log.Printf("settings: save failed: %v", err)
+	if err := def.check(value); err != nil {
+		log.Printf("settings: %s: %v", key, err)
+		return
 	}
+	def.apply(sink, value)
+	if def.restart {
+		log.Printf("settings: %s -> %q (takes effect after a restart)", key, value)
+	} else {
+		log.Printf("settings: %s -> %q", key, value)
+	}
+	saveSettings()
 }
 
 // canReader continuously reads frames from sink and republishes Music_Status

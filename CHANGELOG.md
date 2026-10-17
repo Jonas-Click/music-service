@@ -23,7 +23,10 @@
   (`music vol`) is now saved too (`music.volume`) and applied again after every
   unlock; `music settings` shows and changes `music.volume`,
   `engine.enabled`, `engine.volume` and `engine.style` next to the unlock
-  melody. `unlock.volume 0` now means "the music volume".
+  melody. `unlock.volume 0` now means "the music volume". Every setting in
+  `config.json` can be changed with `music settings <key> <value>`, including
+  `status.stale_seconds`, `can.interface` and `redis.addr` (the last two after
+  a restart); keys, checks, help and shell completion come from one table.
 
 ## v1.0.0 — 2026-10-12
 

@@ -23,6 +23,11 @@ type settings struct {
 	unlockTriggerValue    string
 	unlockTriggerFrom     string
 	musicVolume           int
+	// Boot-time settings: saved when changed, used after a restart (the
+	// running service keeps cfg's values).
+	staleSeconds int
+	canInterface string
+	redisAddr    string
 }
 
 var live liveSettings
@@ -47,6 +52,9 @@ func (l *liveSettings) init(c *Config) {
 		musicVolume = *c.Music.Volume
 	}
 	l.s = settings{
+		staleSeconds:          c.Status.StaleSeconds,
+		canInterface:          c.CAN.Interface,
+		redisAddr:             c.Redis.Addr,
 		musicVolume:           musicVolume,
 		unlockEnabled:         c.UnlockMelody.Enabled != nil && *c.UnlockMelody.Enabled,
 		unlockSong:            c.UnlockMelody.Song,
@@ -88,6 +96,9 @@ func configForSave() *Config {
 	c.UnlockMelody.TriggerFrom = &triggerFrom
 	musicVolume := s.musicVolume
 	c.Music.Volume = &musicVolume
+	c.Status.StaleSeconds = s.staleSeconds
+	c.CAN.Interface = s.canInterface
+	c.Redis.Addr = s.redisAddr
 	engineToConfig(&c)
 	return &c
 }

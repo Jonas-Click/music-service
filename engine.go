@@ -162,6 +162,13 @@ func vehiclePowered(state string) bool {
 // engineSet applies a new mode and/or volume (volume < 0 keeps the current
 // one), saves the persistent part, and asserts it on Tunu if it is powered.
 func engineSet(sink canSink, mode engineMode, d time.Duration, volume int) {
+	engineApply(sink, mode, d, volume)
+	saveSettings()
+}
+
+// engineApply is engineSet without saving, for the settings handler, which
+// saves once after applying.
+func engineApply(sink canSink, mode engineMode, d time.Duration, volume int) {
 	engine.mu.Lock()
 	wasOn := engine.s.sounding(time.Now(), engine.vehicleState)
 	engine.s.mode = mode
@@ -181,9 +188,6 @@ func engineSet(sink canSink, mode engineMode, d time.Duration, volume int) {
 	}
 	engineLogState("ctl", s)
 	engineWriteStatus(s, vstate)
-	if err := saveConfig(configForSave(), cfgPath); err != nil {
-		log.Printf("engine: config save failed: %v", err)
-	}
 	// Silent before and after (off, kickstand down, or only the volume
 	// changed while silent): nothing to tell Tunu. Sending "off" anyway would
 	// also stop a running demo ride.
@@ -196,15 +200,18 @@ func engineSet(sink canSink, mode engineMode, d time.Duration, volume int) {
 // engineSetStyle changes the sound style. The mode and its timer stay as they
 // are; a sounding engine switches style straight away.
 func engineSetStyle(sink canSink, id int) {
+	engineApplyStyle(sink, id)
+	saveSettings()
+}
+
+// engineApplyStyle is engineSetStyle without saving.
+func engineApplyStyle(sink canSink, id int) {
 	engine.mu.Lock()
 	engine.s.style = id
 	s, vstate := engine.s, engine.vehicleState
 	engine.mu.Unlock()
 	log.Printf("ctl: engine style -> %s", engineStyleName(id))
 	engineWriteStatus(s, vstate)
-	if err := saveConfig(configForSave(), cfgPath); err != nil {
-		log.Printf("engine: config save failed: %v", err)
-	}
 	if s.sounding(time.Now(), vstate) {
 		go engineAssert(sink, engineCmdAttempts)
 	}

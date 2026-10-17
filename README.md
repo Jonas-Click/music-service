@@ -62,6 +62,21 @@ music status         # what's playing right now
 music help           # all commands
 ```
 
+## Settings
+
+Every setting is kept in one file and changed the same way:
+
+```sh
+music settings                       # show all settings and their values
+music settings music.volume 70       # change one
+music settings --help                # what each one does
+```
+
+`music vol` and `music engine ...` are shortcuts for the same settings.
+Changes apply immediately, except `can.interface`, `redis.addr` and
+`unlock.trigger_field`, which are saved now and used after
+`systemctl restart music-service`.
+
 ## Melody on unlock
 
 The scooter can play a song every time you unlock it. It's off by default.
@@ -275,10 +290,12 @@ All three are configurable (`unlock.trigger_field`, `unlock.trigger_value`,
 ```
 
 All settings live in this one file, loaded with defaults for anything
-missing and saved atomically (temp file, fsync, rename) on every change.
-`can` and `redis` need a restart to take effect; `music`, `unlock_melody` and
-`engine_sound` change live with `music settings` (or `music vol` and
-`music engine`). The music volume is applied again after every unlock, since
+missing and saved atomically (temp file, fsync, rename) on every change. Each
+one has a `music settings` key (`unlock_melody` is `unlock.*`,
+`engine_sound` is `engine.*`, `duration_seconds` is `unlock.duration`); the
+keys, their checks and their help come from one table, `settings_registry.go`.
+`can.interface`, `redis.addr` and `unlock.trigger_field` are used after a
+restart, everything else at once. The music volume is applied again after every unlock, since
 the controller starts at 100 % when it powers up; an unlock melody with its
 own volume plays at that and the music volume comes back afterwards. The song catalog is
 `songs.json` next to it, with the track files in `songs/`.
@@ -317,7 +334,8 @@ Releases are built by CI when a version tag is pushed.
 | File | |
 |---|---|
 | `main.go` | startup, arguments, signals |
-| `config.go` / `settings.go` | config file and live unlock settings |
+| `config.go` / `settings.go` | config file, its defaults and the one save path; live settings |
+| `settings_registry.go` | every setting: key, check, how it applies, help |
 | `songs.go`, `songs.json`, `songs/` | song catalog and the built-in songs (embedded at build time) |
 | `songs_defaults.go` | merging new and improved built-in songs into an existing catalog |
 | `can.go` | frame building, upload framing, checksum |

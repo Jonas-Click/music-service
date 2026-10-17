@@ -296,6 +296,8 @@ func runEngineStatus() {
 		f[engineStatusVol], style, demo, time.Since(time.Unix(updated, 0)).Round(time.Second))
 }
 
+// runSettings shows (no arguments) or changes (<key> <value>) a setting. All
+// of it comes from the settings registry.
 func runSettings(args []string) {
 	if len(args) == 0 {
 		c, err := loadConfig(cfgPath)
@@ -303,88 +305,64 @@ func runSettings(args []string) {
 			fmt.Fprintf(os.Stderr, "error reading config: %v\n", err)
 			os.Exit(1)
 		}
-		enabled := c.UnlockMelody.Enabled != nil && *c.UnlockMelody.Enabled
-		triggerFrom := ""
-		if c.UnlockMelody.TriggerFrom != nil {
-			triggerFrom = *c.UnlockMelody.TriggerFrom
-		}
-		triggerFromDisplay := triggerFrom
-		if triggerFromDisplay == "" {
-			triggerFromDisplay = "(any)"
-		}
-		volume := 0
-		if c.UnlockMelody.Volume != nil {
-			volume = *c.UnlockMelody.Volume
-		}
-		duration := 0
-		if c.UnlockMelody.DurationSeconds != nil {
-			duration = *c.UnlockMelody.DurationSeconds
-		}
-
-		musicVolume, engineVolume, engineStyle := 100, 50, engineStyles[0]
-		if c.Music.Volume != nil {
-			musicVolume = *c.Music.Volume
-		}
-		if c.EngineSound.Volume != nil {
-			engineVolume = *c.EngineSound.Volume
-		}
-		if c.EngineSound.Style != nil {
-			engineStyle = *c.EngineSound.Style
-		}
-		engineOnSaved := c.EngineSound.Enabled != nil && *c.EngineSound.Enabled
-
-		type row struct{ key, val, desc string }
-		rows := []row{
-			{"music.volume", fmt.Sprintf("%d", musicVolume), "Music volume 0-100 (same as music vol)"},
-			{"unlock.enabled", strconv.FormatBool(enabled), "Play a melody when the vehicle unlocks"},
-			{"unlock.song", fmt.Sprintf("%d (%s)", c.UnlockMelody.Song, songName(c.UnlockMelody.Song)), "Song to play on unlock"},
-			{"unlock.volume", fmt.Sprintf("%d", volume), "Unlock melody volume, 0 = the music volume"},
-			{"unlock.duration", fmt.Sprintf("%ds", duration), "Auto-stop after N seconds, 0 = play to completion"},
-			{"unlock.trigger_field", c.UnlockMelody.TriggerField, "vehicle hash field to watch"},
-			{"unlock.trigger_from", triggerFromDisplay, "required prior value, empty = any"},
-			{"unlock.trigger_value", c.UnlockMelody.TriggerValue, "value that counts as the unlock edge"},
-			{"engine.enabled", strconv.FormatBool(engineOnSaved), "Engine sound on until switched off (music engine on/off)"},
-			{"engine.volume", fmt.Sprintf("%d", engineVolume), "Engine sound volume 0-100"},
-			{"engine.style", engineStyle, "Engine sound style: " + strings.Join(engineStyles, ", ")},
-		}
-
 		const kw, vw = 22, 20
 		sep := "  " + strings.Repeat("-", kw) + "  " + strings.Repeat("-", vw) + "  " + strings.Repeat("-", 40)
-		fmt.Print("\n=== Settings ===\n\n")
+		fmt.Print("\n=== Settings (" + cfgPath + ") ===\n\n")
 		fmt.Printf("  %-*s  %-*s  %s\n", kw, "KEY", vw, "VALUE", "DESCRIPTION")
 		fmt.Println(sep)
-		for _, r := range rows {
-			fmt.Printf("  %-*s  %-*s  %s\n", kw, r.key, vw, r.val, r.desc)
+		for _, d := range settingsRegistry {
+			desc := d.desc
+			if d.restart {
+				desc += " (after a restart)"
+			}
+			val := d.show(c)
+			if val == "" {
+				val = `""`
+			}
+			fmt.Printf("  %-*s  %-*s  %s\n", kw, d.key, vw, val, desc)
 		}
-		fmt.Printf("\n  can.interface=%s  redis.addr=%s  (config.json + restart to change)\n",
-			c.CAN.Interface, c.Redis.Addr)
-		fmt.Printf("\n  Edit: music settings <key> <value>\n\n")
+		fmt.Printf("\n  Change: music settings <key> <value>\n\n")
+		return
+	}
+
+	switch args[0] {
+	case "--help", "-h", "help":
+		fmt.Print(settingsUsage())
+		return
+	case "--keys": // for shell completion
+		for _, d := range settingsRegistry {
+			fmt.Println(d.key)
+		}
+		return
+	case "--values": // for shell completion
+		if len(args) > 1 {
+			if d, ok := settingByKey(args[1]); ok {
+				fmt.Println(strings.Join(d.choices, "\n"))
+			}
+		}
 		return
 	}
 
 	key := args[0]
-	if key == "--help" || key == "-h" || key == "help" {
-		fmt.Print(settingsUsage)
-		return
+	d, ok := settingByKey(key)
+	if !ok {
+		fmt.Fprintf(os.Stderr, "unknown setting: %q\n\n%s", key, settingsUsage())
+		os.Exit(1)
 	}
 	if len(args) < 2 {
 		fmt.Fprintf(os.Stderr, "setting %q requires a value\n", key)
 		os.Exit(1)
 	}
 	value := args[1]
-
-	validKeys := map[string]bool{
-		"music.volume": true, "engine.enabled": true, "engine.volume": true, "engine.style": true,
-		"unlock.enabled": true, "unlock.song": true, "unlock.volume": true,
-		"unlock.duration": true, "unlock.trigger_field": true, "unlock.trigger_value": true,
-		"unlock.trigger_from": true,
-	}
-	if !validKeys[key] {
-		fmt.Fprintf(os.Stderr, "unknown setting: %q\n\n%s", key, settingsUsage)
+	if err := d.check(value); err != nil {
+		fmt.Fprintf(os.Stderr, "%s: %v\n", key, err)
 		os.Exit(1)
 	}
-
-	publishAndConfirm("settings:"+key+":"+value, fmt.Sprintf("%s -> %s", key, value))
+	note := ""
+	if d.restart {
+		note = " (takes effect after: systemctl restart music-service)"
+	}
+	publishAndConfirm("settings:"+key+":"+value, fmt.Sprintf("%s -> %s%s", key, value, note))
 }
 
 func publishAndConfirm(msg, okMsg string) {
@@ -696,32 +674,22 @@ func rebuildHelpText() {
 	helpText = fmt.Sprintf(helpTextTemplate, songListText())
 }
 
-const settingsUsage = `Show or change the settings (saved to config.json immediately).
+func settingsUsage() string {
+	return `Show or change the settings, all kept in one file (config.json), saved
+immediately.
 
 Usage:
-  music settings <key> <value>
+  music settings                 Show every setting and its value
+  music settings <key> <value>   Change one
 
 Settings:
-  music.volume <0-100>          Music volume, kept across unlocks (same as music vol)
-  unlock.enabled <true|false>   Play a melody when the vehicle unlocks
-  unlock.song <number>          Which song to play (see "music songs")
-  unlock.volume <0-100>         Volume for the unlock melody, 0 = the music volume
-  unlock.duration <0-300>       Auto-stop after N seconds, 0 = play to completion
-  unlock.trigger_field <name>   vehicle hash field to watch (advanced; default "state")
-  unlock.trigger_value <value>  Value that counts as the unlock edge (default "parked")
-  unlock.trigger_from <value>   Required prior value (default "stand-by"); "" fires on
-                                 any transition into trigger_value, even e.g. ending a
-                                 ride (ready-to-drive -> parked)
-  engine.enabled <true|false>   Engine sound on until switched off (music engine on)
-  engine.volume <0-100>         Engine sound volume (default 50)
-  engine.style <name>           v8, moped, sport, vtwin, electric
-
-can.interface and redis.addr are boot-time only — edit config.json and
-restart the service to change them.
+` + settingsHelp() + `
+"music vol" and "music engine ..." change the same settings.
 
 Flags:
   -h, --help   help for settings
 `
+}
 
 const engineUsage = `Engine sound: a hum on the motor that follows speed and throttle,
 with five virtual gears. It plays while the kickstand is up (ready to drive)
