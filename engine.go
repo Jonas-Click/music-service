@@ -238,8 +238,9 @@ func engineExpireAfter(sink canSink, gen int, d time.Duration) {
 
 // engineVehicleState follows the vehicle state. Kickstand up (into
 // ready-to-drive) starts an armed engine sound, kickstand down (into parked)
-// stops it, and losing power (locking) ends a one-ride engine sound.
-func engineVehicleState(sink canSink, newState string) {
+// stops it, and losing power (locking) ends a one-ride engine sound. It
+// reports whether Tunu just gained power (it boots then).
+func engineVehicleState(sink canSink, newState string) (poweredUp bool) {
 	now := time.Now()
 	engine.mu.Lock()
 	old := engine.vehicleState
@@ -249,6 +250,7 @@ func engineVehicleState(sink canSink, newState string) {
 	}
 	engine.vehicleState = newState
 	wasPowered, isPowered := vehiclePowered(old), vehiclePowered(newState)
+	poweredUp = isPowered && !wasPowered
 	wasOn := engine.s.sounding(now, old)
 	rideEnded := wasPowered && !isPowered && engine.s.mode == engineRide
 	if rideEnded {
@@ -272,6 +274,7 @@ func engineVehicleState(sink canSink, newState string) {
 	// Tunu may still be booting if the kickstand goes up right after the
 	// unlock, so allow for its boot time.
 	go engineAssert(sink, engineBootAttempts)
+	return
 }
 
 // engineSeed takes the vehicle state when Redis (re)connects. On the first

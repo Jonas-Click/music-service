@@ -22,6 +22,7 @@ type settings struct {
 	unlockTriggerField    string
 	unlockTriggerValue    string
 	unlockTriggerFrom     string
+	musicVolume           int
 }
 
 var live liveSettings
@@ -41,7 +42,12 @@ func (l *liveSettings) init(c *Config) {
 	if c.UnlockMelody.DurationSeconds != nil {
 		duration = *c.UnlockMelody.DurationSeconds
 	}
+	musicVolume := 100
+	if c.Music.Volume != nil {
+		musicVolume = *c.Music.Volume
+	}
 	l.s = settings{
+		musicVolume:           musicVolume,
 		unlockEnabled:         c.UnlockMelody.Enabled != nil && *c.UnlockMelody.Enabled,
 		unlockSong:            c.UnlockMelody.Song,
 		unlockVolume:          volume,
@@ -80,6 +86,8 @@ func configForSave() *Config {
 	c.UnlockMelody.TriggerValue = s.unlockTriggerValue
 	triggerFrom := s.unlockTriggerFrom
 	c.UnlockMelody.TriggerFrom = &triggerFrom
+	musicVolume := s.musicVolume
+	c.Music.Volume = &musicVolume
 	engineToConfig(&c)
 	return &c
 }

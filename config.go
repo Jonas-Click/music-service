@@ -26,6 +26,11 @@ type Config struct {
 		// current.
 		StaleSeconds int `json:"stale_seconds"`
 	} `json:"status"`
+	Music struct {
+		// Master volume 0-100, set with `music vol`. Tunu starts at 100 after
+		// every power-up, so the service applies this again after an unlock.
+		Volume *int `json:"volume"`
+	} `json:"music"`
 	UnlockMelody struct {
 		Enabled *bool `json:"enabled"`
 		Song    int   `json:"song"`
@@ -122,6 +127,10 @@ func loadConfig(path string) (*Config, error) {
 	if c.UnlockMelody.TriggerFrom == nil {
 		f := "stand-by"
 		c.UnlockMelody.TriggerFrom = &f
+	}
+	if c.Music.Volume == nil {
+		v := 100
+		c.Music.Volume = &v
 	}
 	if c.EngineSound.Enabled == nil {
 		f := false

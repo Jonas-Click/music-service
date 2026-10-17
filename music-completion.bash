@@ -17,10 +17,11 @@ _music_complete() {
     elif [ "$first" = "engine" ] && [ "$COMP_CWORD" -eq 3 ] && [ "${COMP_WORDS[2]}" = "for" ]; then
         COMPREPLY=($(compgen -W "1m 5m 10m 30m 1h" -- "$cur"))
     elif [ "$first" = "settings" ] && [ "$COMP_CWORD" -eq 2 ]; then
-        COMPREPLY=($(compgen -W "unlock.enabled unlock.song unlock.volume unlock.duration unlock.trigger_field unlock.trigger_value unlock.trigger_from" -- "$cur"))
+        COMPREPLY=($(compgen -W "music.volume unlock.enabled unlock.song unlock.volume unlock.duration unlock.trigger_field unlock.trigger_value unlock.trigger_from engine.enabled engine.volume engine.style" -- "$cur"))
     elif [ "$first" = "settings" ] && [ "$COMP_CWORD" -eq 3 ]; then
         case "${COMP_WORDS[2]}" in
-            unlock.enabled) COMPREPLY=($(compgen -W "true false" -- "$cur")) ;;
+            unlock.enabled|engine.enabled) COMPREPLY=($(compgen -W "true false" -- "$cur")) ;;
+            engine.style) COMPREPLY=($(compgen -W "v8 moped sport vtwin electric" -- "$cur")) ;;
         esac
     fi
 }

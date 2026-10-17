@@ -70,7 +70,7 @@ The scooter can play a song every time you unlock it. It's off by default.
 music settings                       # show the current settings
 music settings unlock.enabled true   # turn it on
 music settings unlock.song 3         # which song
-music settings unlock.volume 80      # volume to use (0 = keep current)
+music settings unlock.volume 80      # volume to use (0 = the music volume)
 music settings unlock.duration 10    # stop after 10 seconds (0 = play it all)
 ```
 
@@ -256,6 +256,7 @@ All three are configurable (`unlock.trigger_field`, `unlock.trigger_value`,
   "can": { "interface": "can0" },
   "redis": { "addr": "127.0.0.1:6379" },
   "status": { "stale_seconds": 5 },
+  "music": { "volume": 100 },
   "unlock_melody": {
     "enabled": false,
     "song": 3,
@@ -273,9 +274,13 @@ All three are configurable (`unlock.trigger_field`, `unlock.trigger_value`,
 }
 ```
 
-`can` and `redis` need a restart to take effect; everything under
-`unlock_melody` can be changed live with `music settings`, and `engine_sound`
-with `music engine`. The song catalog is
+All settings live in this one file, loaded with defaults for anything
+missing and saved atomically (temp file, fsync, rename) on every change.
+`can` and `redis` need a restart to take effect; `music`, `unlock_melody` and
+`engine_sound` change live with `music settings` (or `music vol` and
+`music engine`). The music volume is applied again after every unlock, since
+the controller starts at 100 % when it powers up; an unlock melody with its
+own volume plays at that and the music volume comes back afterwards. The song catalog is
 `songs.json` next to it, with the track files in `songs/`.
 
 Built-in songs carry a `"default"` key in `songs.json` (and `"since"`, the

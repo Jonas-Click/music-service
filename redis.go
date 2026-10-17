@@ -128,25 +128,36 @@ func redisWatchLoop(sink canSink) error {
 var lastVehicleField = map[string]string{}
 
 func handleVehicleField(sink canSink, cmdConn *redisConn, field string) {
+	poweredUp := false
 	if field == engineStateField {
 		if vals, err := cmdConn.hmget(vehicleHash, field); err == nil && len(vals) >= 1 {
-			engineVehicleState(sink, vals[0])
+			poweredUp = engineVehicleState(sink, vals[0])
 		}
 	}
+	// Tunu starts at volume 100 after every power-up: apply the saved music
+	// volume, unless the unlock melody fires now and sets the volume itself.
+	if !handleUnlockTrigger(sink, cmdConn, field) && poweredUp {
+		go applyMusicVolume(sink)
+	}
+}
+
+// handleUnlockTrigger fires the unlock melody on its edge and reports whether
+// it did.
+func handleUnlockTrigger(sink canSink, cmdConn *redisConn, field string) bool {
 	s := live.get()
 	if field != s.unlockTriggerField {
-		return
+		return false
 	}
 	vals, err := cmdConn.hmget(vehicleHash, field)
 	if err != nil || len(vals) < 1 {
-		return
+		return false
 	}
 	newVal := vals[0]
 	oldVal := lastVehicleField[field]
 	lastVehicleField[field] = newVal
 
 	if !s.unlockEnabled || newVal != s.unlockTriggerValue || oldVal == s.unlockTriggerValue {
-		return
+		return false
 	}
 	// trigger_from empty means the old permissive behavior: any transition
 	// into trigger_value counts. Set (the "stand-by" default included), it
@@ -155,7 +166,7 @@ func handleVehicleField(sink canSink, cmdConn *redisConn, field string) {
 	// wrongly as a genuine unlock (stand-by -> parked) would.
 	if s.unlockTriggerFrom != "" && oldVal != s.unlockTriggerFrom {
 		log.Printf("unlock trigger: %s %q -> %q ignored — not from %q", field, oldVal, newVal, s.unlockTriggerFrom)
-		return
+		return false
 	}
 	log.Printf("unlock trigger: %s %q -> %q — playing song %d", field, oldVal, newVal, s.unlockSong)
 	// Runs in its own goroutine: the retry loop (and the optional auto-stop
@@ -164,6 +175,29 @@ func handleVehicleField(sink canSink, cmdConn *redisConn, field string) {
 	// no other command or vehicle field update would be processed until it
 	// finished.
 	go playUnlockMelodyWithRetry(sink, s.unlockSong, s.unlockVolume, s.unlockDurationSeconds)
+	return true
+}
+
+const (
+	musicVolumeRetryInterval = 2 * time.Second
+	musicVolumeAttempts      = 8 // ~16s, Tunu boots after an unlock
+)
+
+// applyMusicVolume sends the saved music volume until Tunu's Music_Status
+// confirms it. Used after Tunu powers up, and after an unlock melody that
+// played at its own volume.
+func applyMusicVolume(sink canSink) {
+	want := live.get().musicVolume
+	for attempt := 1; attempt <= musicVolumeAttempts; attempt++ {
+		if err := sendVolume(sink, want); err != nil {
+			log.Printf("music volume: send failed (attempt %d/%d): %v", attempt, musicVolumeAttempts, err)
+		}
+		if waitForEchoMatch(func(ev echoEvent) bool { return ev.volume == want }, musicVolumeRetryInterval) {
+			log.Printf("music volume: %d%% applied", want)
+			return
+		}
+	}
+	log.Printf("music volume: %d%% never confirmed by Tunu", want)
 }
 
 // echoEvent is a parsed Music_Status (0x7E6) frame, published by canReader
@@ -172,6 +206,7 @@ func handleVehicleField(sink canSink, cmdConn *redisConn, field string) {
 type echoEvent struct {
 	playing bool
 	song    int
+	volume  int
 }
 
 // Buffered so canReader's send never blocks; nothing drains it when no
@@ -337,6 +372,13 @@ const (
 // fixed delay means this self-corrects regardless of how long boot happens
 // to take on a given run.
 func playUnlockMelodyWithRetry(sink canSink, songNumber, volume, durationSeconds int) {
+	// Tunu has just booted at volume 100: play at the unlock volume, or at
+	// the saved music volume when the unlock melody has none of its own.
+	musicVolume := live.get().musicVolume
+	restore := volume > 0 && volume != musicVolume
+	if volume <= 0 {
+		volume = musicVolume
+	}
 	song, ok := songByNumber(songNumber)
 	if !ok {
 		log.Printf("unlock melody: song %d not found in catalog", songNumber)
@@ -355,10 +397,8 @@ func playUnlockMelodyWithRetry(sink canSink, songNumber, volume, durationSeconds
 	}
 
 	for attempt := 1; attempt <= unlockMaxAttempts; attempt++ {
-		if volume > 0 {
-			if err := sendVolume(sink, volume); err != nil {
-				log.Printf("unlock melody: volume set failed (attempt %d/%d): %v", attempt, unlockMaxAttempts, err)
-			}
+		if err := sendVolume(sink, volume); err != nil {
+			log.Printf("unlock melody: volume set failed (attempt %d/%d): %v", attempt, unlockMaxAttempts, err)
 		}
 		if err := sendPlay(sink, songNumber); err != nil {
 			log.Printf("unlock melody: play failed (attempt %d/%d): %v", attempt, unlockMaxAttempts, err)
@@ -374,6 +414,12 @@ func playUnlockMelodyWithRetry(sink canSink, songNumber, volume, durationSeconds
 				} else {
 					log.Printf("unlock melody: auto-stopped after %ds", durationSeconds)
 				}
+			} else if restore {
+				// Played to the end: wait for it to finish (or be stopped).
+				waitForEchoMatch(func(ev echoEvent) bool { return !ev.playing }, unlockRestoreWait)
+			}
+			if restore {
+				applyMusicVolume(sink)
 			}
 			return
 		}
@@ -420,6 +466,10 @@ func waitForEchoMatch(match func(echoEvent) bool, d time.Duration) bool {
 func waitForEcho(song int, d time.Duration) bool {
 	return waitForEchoMatch(func(ev echoEvent) bool { return ev.playing && ev.song == song }, d)
 }
+
+// unlockRestoreWait bounds the wait for an unlock melody played to the end
+// before the saved music volume comes back.
+const unlockRestoreWait = 10 * time.Minute
 
 const (
 	cmdRetryInterval = 1500 * time.Millisecond
@@ -516,11 +566,7 @@ func handleCommand(sink canSink, cmdConn *redisConn, payload string) {
 			log.Printf("ctl: vol: invalid percentage %q", parts[1])
 			return
 		}
-		if err := sendVolume(sink, pct); err != nil {
-			log.Printf("ctl: vol %d failed: %v", pct, err)
-			return
-		}
-		log.Printf("ctl: vol -> %d%%", pct)
+		setMusicVolume(sink, pct)
 
 	case "raw":
 		if len(parts) < 2 {
@@ -548,7 +594,7 @@ func handleCommand(sink canSink, cmdConn *redisConn, payload string) {
 		log.Printf("ctl: raw -> id=0x%X data=% X", idVal, data)
 
 	case "settings":
-		handleSettingsMsg(parts)
+		handleSettingsMsg(sink, parts)
 
 	case "engine":
 		handleEngineMsg(sink, strings.Split(payload, ":"))
@@ -588,13 +634,61 @@ func sendVolume(sink canSink, pct int) error {
 
 // handleSettingsMsg applies "settings:<key>:<value>" published by `music
 // settings <key> <value>`.
-func handleSettingsMsg(parts []string) {
+// setMusicVolume sends the master volume and saves it as the music volume.
+func setMusicVolume(sink canSink, pct int) {
+	if err := sendVolume(sink, pct); err != nil {
+		log.Printf("ctl: vol %d failed: %v", pct, err)
+	}
+	live.update(func(s *settings) { s.musicVolume = pct })
+	log.Printf("ctl: vol -> %d%%", pct)
+	if err := saveConfig(configForSave(), cfgPath); err != nil {
+		log.Printf("settings: save failed: %v", err)
+	}
+}
+
+func handleSettingsMsg(sink canSink, parts []string) {
 	if len(parts) < 3 {
 		return
 	}
 	key, value := parts[1], parts[2]
 
 	switch key {
+	case "music.volume":
+		n, err := strconv.Atoi(value)
+		if err != nil || n < 0 || n > 100 {
+			log.Printf("settings: music.volume: invalid value %q", value)
+			return
+		}
+		setMusicVolume(sink, n) // saves
+		return
+
+	case "engine.enabled":
+		if value == "true" {
+			engineSet(sink, engineOn, 0, -1) // saves
+		} else {
+			engineSet(sink, engineOff, 0, -1)
+		}
+		return
+
+	case "engine.volume":
+		n, err := strconv.Atoi(value)
+		if err != nil || n < 0 || n > 100 {
+			log.Printf("settings: engine.volume: invalid value %q", value)
+			return
+		}
+		s, _ := engineSnapshot()
+		engineSet(sink, s.mode, time.Until(s.until), n) // saves
+		return
+
+	case "engine.style":
+		id, ok := engineStyleID(value)
+		if !ok {
+			log.Printf("settings: engine.style: unknown style %q", value)
+			return
+		}
+		engineSetStyle(sink, id) // saves
+		return
+
 	case "unlock.enabled":
 		b := value == "true"
 		live.update(func(s *settings) { s.unlockEnabled = b })
@@ -727,7 +821,7 @@ func canReader(sink canSink) {
 		}
 
 		select {
-		case echoCh <- echoEvent{playing: playing, song: song}:
+		case echoCh <- echoEvent{playing: playing, song: song, volume: volume}:
 		default:
 		}
 
