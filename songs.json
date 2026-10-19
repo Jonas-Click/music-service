@@ -9,7 +9,7 @@
   { "number": 4, "name": "Happy Birthday to You", "default": "bday", "since": "1.0.0", "tracks": [
     { "file": "bday-mel.bin", "volume": 2.5, "decay": 0.92 }
   ]},
-  { "number": 5, "name": "robot car for justice", "tracks": [
+  { "number": 5, "name": "robot car for justice", "default": "robot-car-for-justice", "since": "1.1.0", "tracks": [
     { "file": "robot-car-for-justice-mel.bin", "volume": 2.5, "decay": 1.0 },
     { "file": "robot-car-for-justice-bass.bin", "volume": 1.0, "decay": 0.92 }
   ]}

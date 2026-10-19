@@ -136,20 +136,20 @@ second file with a bass line). Each file must be at most 2048 bytes — short,
 simple tunes work best, since the motor plays at most a few notes at once.
 
 ```sh
-music songs add 5 "My Song" my-song.mid
+music songs add 6 "My Song" my-song.mid
 systemctl restart music-service
 ```
 
 With a bass line:
 
 ```sh
-music songs add 5 "My Song" my-song-melody.mid --bass my-song-bass.mid
+music songs add 6 "My Song" my-song-melody.mid --bass my-song-bass.mid
 systemctl restart music-service
 ```
 
 Optional numbers after each file set its volume and how quickly notes fade
 (defaults: melody `1.5 0.92`, bass `0.7 0.92`), for example
-`music songs add 5 "My Song" melody.mid 2.0 0.92 --bass bass.mid 0.5 0.92`.
+`music songs add 6 "My Song" melody.mid 2.0 0.92 --bass bass.mid 0.5 0.92`.
 
 Songs you add stay on your scooter only. Only add music you have the right to
 use.
@@ -157,7 +157,7 @@ use.
 ### Remove a song
 
 ```sh
-music songs remove 5
+music songs remove 6
 systemctl restart music-service
 ```
 

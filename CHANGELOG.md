@@ -19,6 +19,9 @@
   after your highest one, removed built-in songs stay removed, and improved
   built-in songs only replace files you haven't changed
   (`songs-defaults.json`). `songs.json` is now written atomically.
+- New built-in song: robot car for justice (riff and fanfare, melody plus
+  bass), by teal-bauer. Number 5 on a new install, the next free number on an
+  existing one.
 - All settings in `config.json`, one load and one save path: the music volume
   (`music vol`) is now saved too (`music.volume`) and applied again after every
   unlock; `music settings` shows and changes `music.volume`,

@@ -408,8 +408,8 @@ effect. volume/decay default to 1.5/0.92 for melody, 0.7/0.92 for bass —
 the same as every built-in multi-track song.
 
 Examples:
-  music songs add 5 "My Song" my-song.mid
-  music songs add 5 "My Song" my-song-mel.mid 1.5 0.92 --bass my-song-bass.mid 0.7 0.92`)
+  music songs add 6 "My Song" my-song.mid
+  music songs add 6 "My Song" my-song-mel.mid 1.5 0.92 --bass my-song-bass.mid 0.7 0.92`)
 		os.Exit(1)
 	}
 
@@ -653,9 +653,9 @@ Examples:
   music vol 50             half volume
   music stop
   music status
-  music songs add 5 "My Song" my-song.mid
+  music songs add 6 "My Song" my-song.mid
   music settings unlock.enabled true
-  music settings unlock.song 5
+  music settings unlock.song 6
   music settings unlock.duration 10
   music engine ride        engine sound for this ride, off when locked
   music engine for 20m 60  engine sound for 20 minutes at 60%%
