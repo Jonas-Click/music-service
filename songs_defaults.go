@@ -122,6 +122,13 @@ func syncDefaultSongs(dir string, emb fs.FS) ([]string, error) {
 		if _, offered := state.Offered[d.Default]; offered {
 			continue
 		}
+		if index, sums := catalogIndexByContent(catalog, d, trackDir, emb); index >= 0 {
+			catalog[index].Default = d.Default
+			state.Offered[d.Default] = sums
+			changed = true
+			changes = append(changes, fmt.Sprintf("recognised default song %q (number %d)", catalog[index].Name, catalog[index].Number))
+			continue
+		}
 		number := d.Number
 		if !fresh || songNumberUsed(catalog, number) {
 			number = nextSongNumber(catalog)
@@ -191,8 +198,8 @@ func syncDefaultSongs(dir string, emb fs.FS) ([]string, error) {
 }
 
 // migrateDefaults handles an installation from before this merge existed: it
-// recognises the defaults already there by their track file names, gives them
-// their key, and marks every legacy default as offered, present or not (one
+// recognises legacy filenames and exact content matches, gives them their
+// key, and marks every legacy default as offered, present or not (one
 // that is missing was removed by the user).
 func migrateDefaults(catalog []Song, defs []embeddedDefault, state defaultsState, trackDir string, emb fs.FS) []string {
 	var changes []string
@@ -203,6 +210,9 @@ func migrateDefaults(catalog []Song, defs []embeddedDefault, state defaultsState
 			// Only a legacy default can be on disk without its key; a newer
 			// default's file name on disk belongs to one of the user's songs.
 			i = catalogIndexByFiles(catalog, d.Tracks)
+		}
+		if i < 0 {
+			i, _ = catalogIndexByContent(catalog, d, trackDir, emb)
 		}
 		if i < 0 {
 			if legacy {
@@ -300,6 +310,38 @@ func catalogIndexByDefault(catalog []Song, key string) int {
 		}
 	}
 	return -1
+}
+
+// Recognize exact installed copies even when an older installation used other
+// filenames or numbers. Names, volumes, decay and numbering remain user-owned.
+func catalogIndexByContent(catalog []Song, want embeddedDefault, dir string, emb fs.FS) (int, map[string]string) {
+	for index, song := range catalog {
+		if song.Default != "" || song.Source != want.Source || len(song.Tracks) != len(want.Tracks) {
+			continue
+		}
+		if len(song.Tracks) == 0 && song.Source == "" {
+			continue
+		}
+		sums := map[string]string{}
+		matched := true
+		for slot, track := range song.Tracks {
+			expected, err := fs.ReadFile(emb, path.Join("songs", want.Tracks[slot].File))
+			if err != nil {
+				matched = false
+				break
+			}
+			actual, err := os.ReadFile(filepath.Join(dir, track.File))
+			if err != nil || fileSum(actual) != fileSum(expected) {
+				matched = false
+				break
+			}
+			sums[track.File] = fileSum(actual)
+		}
+		if matched {
+			return index, sums
+		}
+	}
+	return -1, nil
 }
 
 func catalogIndexByFiles(catalog []Song, tracks []SongTrack) int {
