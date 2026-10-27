@@ -319,7 +319,7 @@ func catalogIndexByContent(catalog []Song, want embeddedDefault, dir string, emb
 		if song.Default != "" || song.Source != want.Source || len(song.Tracks) != len(want.Tracks) {
 			continue
 		}
-		if len(song.Tracks) == 0 && song.Source == "" {
+		if len(song.Tracks) == 0 {
 			continue
 		}
 		sums := map[string]string{}
