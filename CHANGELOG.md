@@ -30,6 +30,10 @@
   `config.json` can be changed with `music settings <key> <value>`, including
   `status.stale_seconds`, `can.interface` and `redis.addr` (the last two after
   a restart); keys, checks, help and shell completion come from one table.
+- `music` is now a real command in `/data/bin/music` instead of a shell
+  alias, so it also works where no profile is loaded (`sh -c`, scripts,
+  `sh -lc "music ..."` in the Sunshine web shell) and survives system
+  updates. The installer removes the old alias.
 
 ## v1.0.0 — 2026-10-12
 

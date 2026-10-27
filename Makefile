@@ -4,7 +4,7 @@ TARGET  := music-service
 INSTALL := /data/music-service
 SERVICE := music-service.service
 
-.PHONY: build cross clean deploy install-alias vet
+.PHONY: build cross clean deploy install-command vet
 
 build:
 	go build $(LDFLAGS) -o $(TARGET) .
@@ -34,15 +34,18 @@ deploy: cross
 	  systemctl daemon-reload && \
 	  systemctl enable --now $(SERVICE)"
 
-# Set up the 'music' alias and tab-completion on the scooter.
-# Usage: make install-alias HOST=192.168.7.1
-install-alias:
-	scp music-alias.sh       root@$(HOST):$(INSTALL)/music-alias.sh
+# Set up the 'music' command and tab-completion on the scooter. /data/bin
+# survives OS updates; the completion lives in /etc, which doesn't.
+# Usage: make install-command HOST=192.168.7.1
+install-command:
+	ssh root@$(HOST) "mkdir -p /data/bin"
+	scp music                 root@$(HOST):/data/bin/music
 	scp music-completion.bash root@$(HOST):$(INSTALL)/music-completion.bash
 	ssh root@$(HOST) " \
+	  chmod 755 /data/bin/music && \
+	  rm -f /etc/profile.d/music-alias.sh && \
 	  mkdir -p /etc/bash_completion.d && \
-	  cp $(INSTALL)/music-alias.sh /etc/profile.d/music-alias.sh && \
 	  cp $(INSTALL)/music-completion.bash /etc/bash_completion.d/music && \
-	  grep -qF 'music-service/music-alias.sh' /data/onboot.sh 2>/dev/null \
-	    || printf '\n# music alias + completion (re-installed each boot: /etc is wiped on OS updates)\nmkdir -p /etc/bash_completion.d\ncp $(INSTALL)/music-alias.sh /etc/profile.d/music-alias.sh\ncp $(INSTALL)/music-completion.bash /etc/bash_completion.d/music\n' >> /data/onboot.sh && \
+	  grep -qF 'music-service/music-completion.bash' /data/onboot.sh 2>/dev/null \
+	    || printf '\n# music completion (re-installed each boot: /etc is wiped on OS updates)\nmkdir -p /etc/bash_completion.d\ncp $(INSTALL)/music-completion.bash /etc/bash_completion.d/music\n' >> /data/onboot.sh && \
 	  chmod +x /data/onboot.sh"

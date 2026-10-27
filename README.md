@@ -43,7 +43,8 @@ scp music-service install.sh SHA256SUMS music-completion.bash \
 ssh root@192.168.7.1 "sh /data/music-service/install.sh"
 ```
 
-Everything lives in `/data/music-service/`, so it survives system updates.
+Everything lives in `/data/music-service/`, plus the `music` command in
+`/data/bin/`, so it survives system updates.
 
 **Uninstall:**
 
@@ -60,6 +61,14 @@ music stop
 music vol 50         # volume 0-100
 music status         # what's playing right now
 music help           # all commands
+```
+
+`music` is a real command in `/data/bin`, not an alias. Shells that load
+no profile, like the Sunshine web shell, don't have `/data/bin` on their
+`PATH`; run it through a login shell there:
+
+```sh
+sh -lc "music status"
 ```
 
 ## Settings

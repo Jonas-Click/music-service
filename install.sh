@@ -16,12 +16,17 @@ set -e
 RELEASE_URL="https://github.com/Jonas-Click/music-service/releases/latest/download"
 INSTALL="/data/music-service"
 SERVICE_FILE="/etc/systemd/system/music-service.service"
-PROFILE_FILE="/etc/profile.d/music-alias.sh"
+PROFILE_FILE="/etc/profile.d/music-path.sh"
+# Before 1.1.0 the command was a shell alias in this file.
+OLD_PROFILE_FILE="/etc/profile.d/music-alias.sh"
+# /data/bin survives OS updates and is on PATH in login shells.
+BIN_DIR="/data/bin"
+MUSIC_BIN="$BIN_DIR/music"
 COMPLETION_DIR="/etc/bash_completion.d"
 ONBOOT="/data/onboot.sh"
 ONBOOT_BEGIN="# >>> music-service >>>"
 ONBOOT_END="# <<< music-service <<<"
-ALIAS_SRC="$INSTALL/music-alias.sh"
+PROFILE_SRC="$INSTALL/music-path.sh"
 COMPLETION_SRC="$INSTALL/music-completion.bash"
 SERVICE_SRC="$INSTALL/music-service.service"
 
@@ -114,9 +119,13 @@ if [ "${1:-}" = "--uninstall" ] || [ "${1:-}" = "uninstall" ]; then
     ok "service stopped and disabled"
 
     info "Removing files installed outside $INSTALL..."
-    rm -f "$SERVICE_FILE" "$PROFILE_FILE" "$COMPLETION_DIR/music"
+    rm -f "$SERVICE_FILE" "$PROFILE_FILE" "$OLD_PROFILE_FILE" "$COMPLETION_DIR/music"
+    # Only our own wrapper: never a music command someone else put there.
+    if grep -qF "$INSTALL/music-service ctl" "$MUSIC_BIN" 2>/dev/null; then
+        rm -f "$MUSIC_BIN"
+    fi
     systemctl daemon-reload 2>/dev/null || true
-    ok "unit, alias and completion removed"
+    ok "unit, music command and completion removed"
 
     if [ -f "$ONBOOT" ]; then
         cp "$ONBOOT" "$ONBOOT.pre-uninstall"
@@ -332,10 +341,30 @@ EOF
 cp "$SERVICE_SRC" "$SERVICE_FILE"
 ok "systemd service -> $SERVICE_FILE"
 
-echo 'alias music="/data/music-service/music-service ctl"' > "$ALIAS_SRC"
+# A real command rather than an alias, so it also works in shells that load no
+# profile: the Sunshine web shell, sh -c, cron, scripts.
+mkdir -p "$BIN_DIR"
+cat > "$MUSIC_BIN.tmp" << EOF
+#!/bin/sh
+# Installed by music-service install.sh.
+exec $INSTALL/music-service ctl "\$@"
+EOF
+chmod 755 "$MUSIC_BIN.tmp"
+mv "$MUSIC_BIN.tmp" "$MUSIC_BIN"
+ok "music command -> $MUSIC_BIN"
+
+# Older system images don't put /data/bin on PATH themselves.
+cat > "$PROFILE_SRC" << EOF
+# Installed by music-service install.sh: /data/bin holds the music command.
+case ":\$PATH:" in
+    *:$BIN_DIR:*) ;;
+    *) PATH="\${PATH:+\$PATH:}$BIN_DIR"; export PATH ;;
+esac
+EOF
 mkdir -p "$(dirname "$PROFILE_FILE")"
-cp "$ALIAS_SRC" "$PROFILE_FILE"
-ok "music alias -> $PROFILE_FILE"
+cp "$PROFILE_SRC" "$PROFILE_FILE"
+rm -f "$OLD_PROFILE_FILE" "$INSTALL/music-alias.sh"
+ok "/data/bin on PATH -> $PROFILE_FILE"
 
 if [ -f "$COMPLETION_SRC" ]; then
     cp "$COMPLETION_SRC" "$COMPLETION_DIR/music"
@@ -349,7 +378,7 @@ write_onboot_block() {
         printf '# Managed by music-service install.sh — anything between these markers is\n'
         printf '# replaced on the next install and removed by --uninstall.\n'
         printf 'mkdir -p %s\n' "$COMPLETION_DIR"
-        printf 'cmp -s %s %s || cp %s %s\n' "$ALIAS_SRC" "$PROFILE_FILE" "$ALIAS_SRC" "$PROFILE_FILE"
+        printf 'cmp -s %s %s || cp %s %s\n' "$PROFILE_SRC" "$PROFILE_FILE" "$PROFILE_SRC" "$PROFILE_FILE"
         printf 'cmp -s %s %s/music || cp %s %s/music\n' "$COMPLETION_SRC" "$COMPLETION_DIR" "$COMPLETION_SRC" "$COMPLETION_DIR"
         printf '\n'
         printf 'if ! cmp -s %s %s; then\n' "$SERVICE_SRC" "$SERVICE_FILE"
@@ -411,7 +440,9 @@ cat << 'EOF'
 
   Install complete!
 
-  Open a new shell (or: source /etc/profile) to use the music alias.
+  The music command is in /data/bin. Open a new shell if "music" isn't
+  found yet. In a shell that loads no profile (the Sunshine web shell),
+  use:  sh -lc "music status"
 
   Quick start:
     music play 2          play La Cucaracha

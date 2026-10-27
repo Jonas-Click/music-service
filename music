@@ -1,0 +1,3 @@
+#!/bin/sh
+# The music command: install.sh puts it in /data/bin/music.
+exec /data/music-service/music-service ctl "$@"
