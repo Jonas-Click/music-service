@@ -35,7 +35,8 @@ deploy: cross
 	  systemctl enable --now $(SERVICE)"
 
 # Set up the 'music' command and tab-completion on the scooter. /data/bin
-# survives OS updates; the completion lives in /etc, which doesn't.
+# survives OS updates; the /usr/local/bin link (for the web shell) and the
+# completion don't, so install.sh's onboot.sh block restores them on boot.
 # Usage: make install-command HOST=192.168.7.1
 install-command:
 	ssh root@$(HOST) "mkdir -p /data/bin"
@@ -43,6 +44,7 @@ install-command:
 	scp music-completion.bash root@$(HOST):$(INSTALL)/music-completion.bash
 	ssh root@$(HOST) " \
 	  chmod 755 /data/bin/music && \
+	  mkdir -p /usr/local/bin && ln -sfn /data/bin/music /usr/local/bin/music && \
 	  rm -f /etc/profile.d/music-alias.sh && \
 	  mkdir -p /etc/bash_completion.d && \
 	  cp $(INSTALL)/music-completion.bash /etc/bash_completion.d/music && \

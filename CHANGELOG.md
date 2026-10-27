@@ -31,9 +31,10 @@
   `status.stale_seconds`, `can.interface` and `redis.addr` (the last two after
   a restart); keys, checks, help and shell completion come from one table.
 - `music` is now a real command in `/data/bin/music` instead of a shell
-  alias, so it also works where no profile is loaded (`sh -c`, scripts,
-  `sh -lc "music ..."` in the Sunshine web shell) and survives system
-  updates. The installer removes the old alias.
+  alias, linked from `/usr/local/bin/music`, so it also works where no
+  profile is loaded (the Sunshine web shell, `sh -c`, scripts). The link is
+  restored on every boot after a system update. The installer removes the
+  old alias.
 
 ## v1.0.0 — 2026-10-12
 

@@ -63,13 +63,10 @@ music status         # what's playing right now
 music help           # all commands
 ```
 
-`music` is a real command in `/data/bin`, not an alias. Shells that load
-no profile, like the Sunshine web shell, don't have `/data/bin` on their
-`PATH`; run it through a login shell there:
-
-```sh
-sh -lc "music status"
-```
+`music` is a real command in `/data/bin`, not an alias, with a link in
+`/usr/local/bin` so it also works in shells that load no profile, like the
+Sunshine web shell. System updates remove that link; it comes back on the
+next boot.
 
 ## Settings
 

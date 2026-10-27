@@ -22,6 +22,10 @@ OLD_PROFILE_FILE="/etc/profile.d/music-alias.sh"
 # /data/bin survives OS updates and is on PATH in login shells.
 BIN_DIR="/data/bin"
 MUSIC_BIN="$BIN_DIR/music"
+# Shells that load no profile (the Sunshine web shell) have only the system
+# PATH. A link in /usr/local/bin reaches them; OS updates replace the root
+# filesystem, so onboot.sh puts it back on every boot.
+LINK_BIN="/usr/local/bin/music"
 COMPLETION_DIR="/etc/bash_completion.d"
 ONBOOT="/data/onboot.sh"
 ONBOOT_BEGIN="# >>> music-service >>>"
@@ -121,6 +125,9 @@ if [ "${1:-}" = "--uninstall" ] || [ "${1:-}" = "uninstall" ]; then
     info "Removing files installed outside $INSTALL..."
     rm -f "$SERVICE_FILE" "$PROFILE_FILE" "$OLD_PROFILE_FILE" "$COMPLETION_DIR/music"
     # Only our own wrapper: never a music command someone else put there.
+    if [ "$(readlink "$LINK_BIN" 2>/dev/null)" = "$MUSIC_BIN" ]; then
+        rm -f "$LINK_BIN"
+    fi
     if grep -qF "$INSTALL/music-service ctl" "$MUSIC_BIN" 2>/dev/null; then
         rm -f "$MUSIC_BIN"
     fi
@@ -353,6 +360,15 @@ chmod 755 "$MUSIC_BIN.tmp"
 mv "$MUSIC_BIN.tmp" "$MUSIC_BIN"
 ok "music command -> $MUSIC_BIN"
 
+# Never replace a music command that isn't ours.
+if [ -e "$LINK_BIN" ] && [ ! -L "$LINK_BIN" ]; then
+    warn "$LINK_BIN exists and is not a link — left alone"
+else
+    mkdir -p "$(dirname "$LINK_BIN")"
+    ln -sfn "$MUSIC_BIN" "$LINK_BIN"
+    ok "$LINK_BIN -> $MUSIC_BIN (for the web shell)"
+fi
+
 # Older system images don't put /data/bin on PATH themselves.
 cat > "$PROFILE_SRC" << EOF
 # Installed by music-service install.sh: /data/bin holds the music command.
@@ -379,6 +395,8 @@ write_onboot_block() {
         printf '# replaced on the next install and removed by --uninstall.\n'
         printf 'mkdir -p %s\n' "$COMPLETION_DIR"
         printf 'cmp -s %s %s || cp %s %s\n' "$PROFILE_SRC" "$PROFILE_FILE" "$PROFILE_SRC" "$PROFILE_FILE"
+        printf 'mkdir -p %s\n' "$(dirname "$LINK_BIN")"
+        printf '[ -e %s ] && [ ! -L %s ] || ln -sfn %s %s\n' "$LINK_BIN" "$LINK_BIN" "$MUSIC_BIN" "$LINK_BIN"
         printf 'cmp -s %s %s/music || cp %s %s/music\n' "$COMPLETION_SRC" "$COMPLETION_DIR" "$COMPLETION_SRC" "$COMPLETION_DIR"
         printf '\n'
         printf 'if ! cmp -s %s %s; then\n' "$SERVICE_SRC" "$SERVICE_FILE"
@@ -440,9 +458,9 @@ cat << 'EOF'
 
   Install complete!
 
-  The music command is in /data/bin. Open a new shell if "music" isn't
-  found yet. In a shell that loads no profile (the Sunshine web shell),
-  use:  sh -lc "music status"
+  The music command is in /data/bin, linked from /usr/local/bin so the
+  Sunshine web shell finds it too. Open a new shell if "music" isn't
+  found yet.
 
   Quick start:
     music play 2          play La Cucaracha
