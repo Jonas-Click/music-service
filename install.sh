@@ -2,7 +2,7 @@
 # Tunu Music Service — guided installer
 #
 # Online install (one line on the scooter terminal):
-#   wget -qO /tmp/music-install.sh \
+#   wget -T 20 -qO /tmp/music-install.sh \
 #        https://raw.githubusercontent.com/Jonas-Click/music-service/main/install.sh \
 #     && sh /tmp/music-install.sh
 #
@@ -67,29 +67,71 @@ ask_yn() {
 
 ALLOW_INSECURE="${MUSIC_ALLOW_INSECURE:-0}"
 
+# Downloads give up instead of hanging: with wget's defaults (15 minutes per
+# stalled connection, 20 tries) a dropped modem connection left the installer
+# silent for over an hour. The limits apply to time without any data, so a
+# slow but moving download still finishes. BusyBox wget has no -t.
+if wget --help 2>&1 | grep -q BusyBox; then
+    WGET_OPTS="-T 20"
+else
+    WGET_OPTS="-T 20 -t 3"
+fi
+CURL_OPTS="--connect-timeout 20 --speed-limit 1 --speed-time 20 --retry 2"
+
+# Returns the tool's exit status, so callers can tell "no network" from an
+# HTTP error (see network_error).
 download() {
     _url="$1"; _dst="$2"
     if command -v wget >/dev/null 2>&1; then
-        wget -qO "$_dst" "$_url" && return 0
-        [ "$ALLOW_INSECURE" = "1" ] || return 1
-        wget --no-check-certificate -qO "$_dst" "$_url"
+        wget -q $WGET_OPTS -O "$_dst" "$_url" && return 0
+        _rc=$?
+        [ "$ALLOW_INSECURE" = "1" ] || return $_rc
+        wget -q $WGET_OPTS --no-check-certificate -O "$_dst" "$_url"
     elif command -v curl >/dev/null 2>&1; then
-        curl -fsSL -o "$_dst" "$_url" && return 0
-        [ "$ALLOW_INSECURE" = "1" ] || return 1
-        curl -fsSLk -o "$_dst" "$_url"
+        curl -fsSL $CURL_OPTS -o "$_dst" "$_url" && return 0
+        _rc=$?
+        [ "$ALLOW_INSECURE" = "1" ] || return $_rc
+        curl -fsSLk $CURL_OPTS -o "$_dst" "$_url"
     else
-        return 1
+        return 127
+    fi
+}
+
+# Exit statuses that mean the server couldn't be reached at all: GNU wget 4;
+# curl 6 (DNS), 7 (connect), 28 (timeout), 35 (TLS), 52/56 (connection lost).
+# BusyBox wget reports every failure as 1, so it never counts as offline and
+# each download keeps its own 20 s limit.
+network_error() {
+    if command -v wget >/dev/null 2>&1; then
+        ! wget --help 2>&1 | grep -q BusyBox && [ "$1" -eq 4 ]
+    else
+        case "$1" in 6|7|28|35|52|56) return 0 ;; *) return 1 ;; esac
     fi
 }
 
 SUMS_FILE=""
+# Cleared when GitHub can't be reached, so the remaining downloads don't each
+# wait out their own timeout.
+ONLINE=1
 
 fetch_sums() {
     SUMS_FILE="$(mktemp 2>/dev/null || echo /tmp/music-sha256sums)"
-    if download "$RELEASE_URL/SHA256SUMS" "$SUMS_FILE" 2>/dev/null && [ -s "$SUMS_FILE" ]; then
-        ok "SHA256SUMS fetched ($(grep -c . "$SUMS_FILE") entries)"
+    info "Fetching checksums from GitHub..."
+    if download "$RELEASE_URL/SHA256SUMS" "$SUMS_FILE" 2>/dev/null; then
+        _rc=0
     else
-        rm -f "$SUMS_FILE"; SUMS_FILE=""
+        _rc=$?
+    fi
+    if [ "$_rc" -eq 0 ] && [ -s "$SUMS_FILE" ]; then
+        ok "SHA256SUMS fetched ($(grep -c . "$SUMS_FILE") entries)"
+        return 0
+    fi
+    rm -f "$SUMS_FILE"; SUMS_FILE=""
+    if [ "$_rc" -ne 0 ] && network_error "$_rc"; then
+        ONLINE=0
+        warn "Can't reach GitHub — check the scooter's internet connection."
+        warn "Continuing with the files already in $INSTALL (offline install)."
+    else
         warn "SHA256SUMS unavailable — downloads cannot be verified"
     fi
 }
@@ -203,7 +245,7 @@ mkdir -p "$COMPLETION_DIR"
 fetch_sums
 
 info "music-service binary..."
-if download "$RELEASE_URL/music-service" "$INSTALL/music-service.tmp" 2>/dev/null; then
+if [ "$ONLINE" -eq 1 ] && download "$RELEASE_URL/music-service" "$INSTALL/music-service.tmp" 2>/dev/null; then
     verify_file "$INSTALL/music-service.tmp" "music-service"
     mv "$INSTALL/music-service.tmp" "$INSTALL/music-service"
     ok "music-service (downloaded)"
@@ -212,12 +254,12 @@ elif [ -f "$INSTALL/music-service" ]; then
     ok "music-service (already present — skipped download)"
 else
     rm -f "$INSTALL/music-service.tmp"
-    fail "No music-service binary found. Copy it to $INSTALL/ first."
+    fail "No music-service binary found. Check the internet connection, or copy the release files to $INSTALL/ (offline install, see README.md)."
 fi
 chmod +x "$INSTALL/music-service"
 
 info "Bash tab-completion..."
-if download "$RELEASE_URL/music-completion.bash" "$COMPLETION_SRC.tmp" 2>/dev/null; then
+if [ "$ONLINE" -eq 1 ] && download "$RELEASE_URL/music-completion.bash" "$COMPLETION_SRC.tmp" 2>/dev/null; then
     mv "$COMPLETION_SRC.tmp" "$COMPLETION_SRC"
     ok "bash completion (downloaded)"
 elif [ -f "$COMPLETION_SRC" ]; then
@@ -227,6 +269,7 @@ else
     rm -f "$COMPLETION_SRC.tmp"
     warn "Completion not available — tab completion will not work."
 fi
+[ -z "$SUMS_FILE" ] || rm -f "$SUMS_FILE"
 
 # ── Configuration ─────────────────────────────────────────────────────────────
 

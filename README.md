@@ -21,7 +21,7 @@ controller turns the notes into sound by making the motor hum them.
 On the scooter, if it has internet:
 
 ```sh
-wget -qO /tmp/music-install.sh \
+wget -T 20 -qO /tmp/music-install.sh \
      https://raw.githubusercontent.com/Jonas-Click/music-service/main/install.sh \
   && sh /tmp/music-install.sh
 ```

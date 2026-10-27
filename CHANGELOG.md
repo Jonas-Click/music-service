@@ -35,6 +35,10 @@
   profile is loaded (the Sunshine web shell, `sh -c`, scripts). The link is
   restored on every boot after a system update. The installer removes the
   old alias.
+- The installer no longer hangs on a bad connection: downloads give up after
+  20 seconds without data (at most 3 tries), it says what it's fetching, and
+  when GitHub can't be reached it says so and continues with the files
+  already in `/data/music-service` instead of waiting on every download.
 
 ## v1.0.0 — 2026-10-12
 
