@@ -572,15 +572,14 @@ func handleCommand(sink canSink, cmdConn *redisConn, payload string) {
 		if len(parts) < 2 {
 			return
 		}
-		rest := strings.SplitN(parts[1], ":", 2)
-		idVal, err := strconv.ParseUint(rest[0], 16, 32)
+		idVal, err := strconv.ParseUint(parts[1], 16, 32)
 		if err != nil {
-			log.Printf("ctl: raw: invalid CAN ID %q", rest[0])
+			log.Printf("ctl: raw: invalid CAN ID %q", parts[1])
 			return
 		}
 		hexBytes := "01"
-		if len(rest) > 1 {
-			hexBytes = rest[1]
+		if len(parts) > 2 {
+			hexBytes = parts[2]
 		}
 		data, err := parseHexBytes(hexBytes)
 		if err != nil {
