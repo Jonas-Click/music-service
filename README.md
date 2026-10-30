@@ -103,12 +103,18 @@ Styles: `v8` (default), `moped` (two-stroke, kick start), `sport` (sport
 bike), `vtwin` (cruiser) and `electric` (sci-fi whine). All are equally
 loud.
 
+> **Warning:** don't turn the engine sound up too high. Its low tones drive
+> current through the motor windings, and all of it becomes heat in the
+> motor, not torque. High volumes, especially for long rides, can physically
+> damage the motor. The default of 50 % is the tested level; `music` warns
+> when you set more.
+
 ```sh
 music engine ride        # on for this ride, off when you lock the scooter
 music engine for 20m     # on for 20 minutes (also 90s, 1h)
 music engine on          # on until you switch it off
 music engine off
-music engine vol 60      # volume 0-100 (default 50)
+music engine vol 40      # volume 0-100 (default 50)
 music engine style moped # sound style
 music engine demo        # hear a 30-second demo while standing still
                          # (music stop ends it)

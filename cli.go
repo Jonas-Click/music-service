@@ -165,6 +165,7 @@ func runEngine(args []string) {
 			fmt.Fprintln(os.Stderr, "volume must be 0-100")
 			os.Exit(1)
 		}
+		warnEngineVolume(v)
 		return strconv.Itoa(v)
 	}
 	withVol := func(v string) string {
@@ -361,6 +362,9 @@ func runSettings(args []string) {
 	note := ""
 	if d.restart {
 		note = " (takes effect after: systemctl restart music-service)"
+	}
+	if key == "engine.volume" {
+		warnEngineVolume(atoi(value))
 	}
 	publishAndConfirm("settings:"+key+":"+value, fmt.Sprintf("%s -> %s%s", key, value, note))
 }
@@ -703,7 +707,9 @@ Usage:
   music engine ride [vol]          On for this ride, off when the scooter is locked
   music engine for <time> [vol]    On for a set time, 10s to 24h: 10m, 90s, 1h
                                    (a plain number is minutes), then off
-  music engine vol <0-100>         Volume only (default 50)
+  music engine vol <0-100>         Volume only (default 50). Above 50 the engine
+                                   tones heat the motor windings more; very high
+                                   volumes for long can damage the motor
   music engine style [name]        Sound style: v8 (default), moped, sport, vtwin,
                                    electric; without a name, list them
   music engine demo [vol]          Play a ~30 s demo at a standstill: start sound,
@@ -717,3 +723,12 @@ still with the brake pressed, the throttle revs it. Tunu is unpowered while lock
 engine sound off, so the service switches it on again as needed; nothing is
 sent while the scooter is locked.
 `
+
+// warnEngineVolume warns above the default engine volume: the engine tones sit
+// low, where the motor windings' impedance is lowest, so their current turns
+// into heat in the motor, not torque.
+func warnEngineVolume(v int) {
+	if v > engineDefaultVolume {
+		fmt.Fprintf(os.Stderr, "warning: engine volume %d%% is above the default %d%%. The engine sound drives current through the motor windings as heat; high volumes, especially for long, can physically damage the motor.\n", v, engineDefaultVolume)
+	}
+}
