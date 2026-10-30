@@ -215,7 +215,7 @@ func runEngine(args []string) {
 		publishAndConfirm("engine:style:"+args[1], "engine style -> "+args[1])
 	case "demo":
 		v := volArg(1)
-		publishAndConfirm("engine:demo:"+v, "engine demo ride (~23 s)"+withVol(v))
+		publishAndConfirm("engine:demo:"+v, "engine demo ride (~30 s)"+withVol(v))
 	case "help", "--help", "-h":
 		fmt.Print(engineUsage)
 	default:

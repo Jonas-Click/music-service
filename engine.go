@@ -415,7 +415,7 @@ func engineWriteStatus(s engineState, vehicleState string) {
 	}
 }
 
-// engineDemo plays app.lisp's demo ride once (~23 s): the same sound code as a
+// engineDemo plays app.lisp's demo ride once (~30 s): the same sound code as a
 // real ride, fed by a scripted speed and throttle. It leaves the on/off mode as
 // it is. Only sent while Tunu is powered.
 func engineDemo(sink canSink) {
