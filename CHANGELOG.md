@@ -1,6 +1,6 @@
 # Changelog
 
-## v1.1.0 — unreleased
+## v1.1.0 — 2026-10-30
 
 - `music engine`: engine sound that follows speed and throttle, on until
   switched off, for one ride, or for a set time. Re-applied after every unlock
@@ -22,6 +22,8 @@
   after your highest one, removed built-in songs stay removed, and improved
   built-in songs only replace files you haven't changed
   (`songs-defaults.json`). `songs.json` is now written atomically.
+- Updates recognise built-in songs you already have under another name or
+  number, so they aren't added twice (by teal-bauer).
 - New built-in song: robot car for justice (riff and fanfare, melody plus
   bass), by teal-bauer. Number 5 on a new install, the next free number on an
   existing one.
@@ -36,6 +38,8 @@
   `config.json` can be changed with `music settings <key> <value>`, including
   `status.stale_seconds`, `can.interface` and `redis.addr` (the last two after
   a restart); keys, checks, help and shell completion come from one table.
+- `music raw:<id>:<hex>` sends the given payload again; it used to send only
+  `01` (by teal-bauer).
 - `music` is now a real command in `/data/bin/music` instead of a shell
   alias, linked from `/usr/local/bin/music`, so it also works where no
   profile is loaded (the Sunshine web shell, `sh -c`, scripts). The link is
