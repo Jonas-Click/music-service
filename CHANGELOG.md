@@ -25,6 +25,9 @@
 - New built-in song: robot car for justice (riff and fanfare, melody plus
   bass), by teal-bauer. Number 5 on a new install, the next free number on an
   existing one.
+- New built-in songs: Space Journey (melody plus bass) and Space Journey
+  Fanfare, by teal-bauer (credits in `MEDIA.md`). Numbers 6 and 7 on a new
+  install, the next free numbers on an existing one.
 - All settings in `config.json`, one load and one save path: the music volume
   (`music vol`) is now saved too (`music.volume`) and applied again after every
   unlock; `music settings` shows and changes `music.volume`,
