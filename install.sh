@@ -234,6 +234,8 @@ systemctl is-active --quiet music-service || fail 'Service did not start; check 
 SUCCESS=1
 # Alias from releases before the music command moved to /data/bin.
 rm -f "$OLD_PROFILE" "$INSTALL/music-alias.sh"
+# Each backup holds a full copy of the installation; keep the three newest.
+ls -1dt "$BACKUPS"/install-* 2>/dev/null | tail -n +4 | while IFS= read -r old; do rm -rf "$old"; done
 printf 'Installed %s. Use music help in SSH (no new login required).\n' "$VERSION"
 printf 'Existing config and songs were kept. Change settings with music settings.\n'
 printf 'This installs the MDB service only, not the VESC app or firmware.\n'

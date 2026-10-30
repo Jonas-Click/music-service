@@ -102,6 +102,21 @@ esac
         self.assertEqual((install / 'config.json').read_bytes(), config)
         self.assertEqual((self.root / 'data/music-service-backups').stat().st_mode & 0o777, 0o700)
 
+    def test_only_the_three_newest_backups_are_kept(self):
+        self.existing()
+        backups = self.root / 'data/music-service-backups'
+        backups.mkdir(parents=True)
+        (backups / 'manual').mkdir()
+        made = []
+        for _ in range(5):
+            self.run_install()
+            made += [path for path in backups.glob('install-*') if path not in made]
+        self.assertEqual(sorted(backups.glob('install-*')), sorted(made[-3:]))
+        self.assertTrue((backups / 'manual').exists())
+        (self.root / 'fail-start').touch()
+        self.run_install(success=False)
+        self.assertEqual(len(list(backups.glob('install-*'))), 4)
+
     def test_custom_unit_options_survive(self):
         self.existing()
         unit = self.root / 'etc/systemd/system/music-service.service'

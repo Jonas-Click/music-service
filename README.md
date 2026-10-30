@@ -26,7 +26,7 @@ installer=$(mktemp /tmp/music-install.XXXXXX) &&
   sh "$installer" && rm -f "$installer"
 ```
 
-The installer downloads the matching release, verifies all files against its checksums before changing the installation, and starts the service. Existing configuration, songs and numbers are kept, including when the old executable is in `/data/bin`. Backups are retained in `/data/music-service-backups/`; if the new service fails to start, the installer restores the previous executable and setup.
+The installer downloads the matching release, verifies all files against its checksums before changing the installation, and starts the service. Existing configuration, songs and numbers are kept, including when the old executable is in `/data/bin`. The three newest backups are kept in `/data/music-service-backups/`; if the new service fails to start, the installer restores the previous executable and setup.
 
 **No internet on the scooter?** Download `music-service`, `install.sh`, `SHA256SUMS`, `music-completion.bash`, `music-service.service` and `config.json.example` from the [latest release](https://github.com/Jonas-Click/music-service/releases/latest) onto your computer, then stage them separately:
 

@@ -39,13 +39,14 @@
   20 seconds without data (at most 3 tries), and it says what it's fetching.
 - Safer installer (by teal-bauer): it downloads and checks every release file
   against `SHA256SUMS` before changing anything, keeps `config.json` and your
-  songs, backs up the old install to `/data/music-service-backups/`, and puts
-  it back if the new service doesn't start. No more questions: settings are
-  changed afterwards with `music settings`. Without internet, copy the release
-  files to the scooter and run `install.sh --offline <dir>`. The service,
-  `music` command and shell completion are restored on every boot after a
-  system update. Releases now also ship `music-service.service` and
-  `config.json.example`, which the installer needs.
+  songs, backs up the old install to `/data/music-service-backups/` (the three
+  newest backups are kept), and puts it back if the new service doesn't start.
+  No more questions: settings are changed afterwards with `music settings`.
+  Without internet, copy the release files to the scooter and run
+  `install.sh --offline <dir>`. The service, `music` command and shell
+  completion are restored on every boot after a system update. Releases now
+  also ship `music-service.service` and `config.json.example`, which the
+  installer needs.
 
 ## v1.0.0 — 2026-10-12
 
