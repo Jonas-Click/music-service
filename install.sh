@@ -16,6 +16,7 @@ INSTALL="$DATA/music-service"
 BIN="$DATA/bin"
 UNIT="$ROOT/etc/systemd/system/music-service.service"
 PROFILE="$ROOT/etc/profile.d/music-path.sh"
+OLD_PROFILE="$ROOT/etc/profile.d/music-alias.sh"
 COMPLETION="$ROOT/etc/bash_completion.d/music"
 SHORTCUT="$ROOT/usr/local/bin/music"
 ONBOOT="$DATA/onboot.sh"
@@ -110,7 +111,7 @@ strip_block
 if [ "$MODE" = uninstall ]; then
     systemctl stop music-service
     systemctl disable music-service
-    rm -f "$UNIT" "$PROFILE" "$COMPLETION"
+    rm -f "$UNIT" "$PROFILE" "$OLD_PROFILE" "$COMPLETION"
     if [ -L "$SHORTCUT" ] && [ "$(readlink "$SHORTCUT")" = "$BIN/music" ]; then rm -f "$SHORTCUT"; fi
     if [ -L "$BIN/music-service" ] && [ "$(readlink "$BIN/music-service")" = "$INSTALL/music-service" ]; then rm -f "$BIN/music-service"; fi
     if [ -f "$BIN/music" ] && grep -Fq "$INSTALL/music-service" "$BIN/music"; then rm -f "$BIN/music"; fi
@@ -122,18 +123,26 @@ if [ "$MODE" = uninstall ]; then
     exit 0
 fi
 
+# Downloads give up after 20 s without data instead of hanging: wget's defaults
+# (15 minutes per stalled connection, 20 tries) once left the installer silent
+# for over an hour. BusyBox wget has no -t.
+if wget --help 2>&1 | grep -q BusyBox; then WGET_OPTS="-T 20"; else WGET_OPTS="-T 20 -t 3"; fi
+CURL_OPTS="--connect-timeout 20 --speed-limit 1 --speed-time 20 --retry 2"
 fetch() {
     if [ -n "$OFFLINE" ]; then
         cp "$OFFLINE/$1" "$WORK/$1"
-    elif command -v wget >/dev/null 2>&1; then
-        wget -qO "$WORK/$1" "$RELEASE_URL/$1"
+        return
+    fi
+    echo "Downloading $1..."
+    if command -v wget >/dev/null 2>&1; then
+        wget -q $WGET_OPTS -O "$WORK/$1" "$RELEASE_URL/$1"
     elif command -v curl >/dev/null 2>&1; then
-        curl -fsSL -o "$WORK/$1" "$RELEASE_URL/$1"
+        curl -fsSL $CURL_OPTS -o "$WORK/$1" "$RELEASE_URL/$1"
     else
         fail 'wget or curl is required for an online install'
     fi
 }
-fetch SHA256SUMS || fail "Cannot fetch SHA256SUMS from $RELEASE_URL. No installed files changed."
+fetch SHA256SUMS || fail "Cannot fetch SHA256SUMS from $RELEASE_URL; check the internet connection or use --offline. No installed files changed."
 for name in $ASSETS; do
     fetch "$name" || fail "Cannot fetch $name. No installed files changed."
     want=$(awk -v name="$name" '$2==name || $2=="*"name { n++; hash=$1 } END { if(n!=1) exit 1; print hash }' "$WORK/SHA256SUMS") || fail "Missing or duplicate checksum for $name"
@@ -223,6 +232,8 @@ systemctl start music-service
 sleep 2
 systemctl is-active --quiet music-service || fail 'Service did not start; check journalctl -u music-service'
 SUCCESS=1
+# Alias from releases before the music command moved to /data/bin.
+rm -f "$OLD_PROFILE" "$INSTALL/music-alias.sh"
 printf 'Installed %s. Use music help in SSH (no new login required).\n' "$VERSION"
 printf 'Existing config and songs were kept. Change settings with music settings.\n'
 printf 'This installs the MDB service only, not the VESC app or firmware.\n'

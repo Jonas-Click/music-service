@@ -22,7 +22,7 @@ On the scooter, if it has internet:
 
 ```sh
 installer=$(mktemp /tmp/music-install.XXXXXX) &&
-  wget -qO "$installer" https://github.com/Jonas-Click/music-service/releases/latest/download/install.sh &&
+  wget -T 20 -qO "$installer" https://github.com/Jonas-Click/music-service/releases/latest/download/install.sh &&
   sh "$installer" && rm -f "$installer"
 ```
 
