@@ -23,6 +23,7 @@ jobs:
           go-version: '1.21'
 
       - run: go vet ./...
+      - run: python3 -m unittest discover -s tests -v
 
       - name: build ARM binary
         run: |
@@ -33,15 +34,19 @@ jobs:
 
       - name: stage release files
         run: |
-          cp install.sh music-completion.bash dist/
-          ( cd dist && sha256sum music-service install.sh music-completion.bash > SHA256SUMS )
+          sed -e "s|^RELEASE_REPOSITORY=.*|RELEASE_REPOSITORY=\"${GITHUB_REPOSITORY}\"|" \
+              -e "s|^RELEASE_TAG=.*|RELEASE_TAG=\"${GITHUB_REF_NAME}\"|" install.sh > dist/install.sh
+          cp music-completion.bash music-service.service config.json.example dist/
+          ( cd dist && sha256sum music-service install.sh music-completion.bash \
+              music-service.service config.json.example > SHA256SUMS )
 
       - name: publish release
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
           gh release create "${GITHUB_REF_NAME}" \
-            dist/music-service dist/install.sh dist/music-completion.bash dist/SHA256SUMS \
+            dist/music-service dist/install.sh dist/music-completion.bash \
+            dist/music-service.service dist/config.json.example dist/SHA256SUMS \
             --title "${GITHUB_REF_NAME}" \
             --notes "Built by CI from ${GITHUB_SHA}." \
             --repo "${GITHUB_REPOSITORY}"

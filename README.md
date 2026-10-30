@@ -21,30 +21,23 @@ controller turns the notes into sound by making the motor hum them.
 On the scooter, if it has internet:
 
 ```sh
-wget -T 20 -qO /tmp/music-install.sh \
-     https://raw.githubusercontent.com/Jonas-Click/music-service/main/install.sh \
-  && sh /tmp/music-install.sh
+installer=$(mktemp /tmp/music-install.XXXXXX) &&
+  wget -T 20 -qO "$installer" https://github.com/Jonas-Click/music-service/releases/latest/download/install.sh &&
+  sh "$installer" && rm -f "$installer"
 ```
 
-The installer asks a few questions (you can press Enter to accept the
-defaults), downloads the program, checks it against the published checksums,
-and sets it up to start automatically. Running it again later upgrades or
-reconfigures an existing install.
+The installer downloads the matching release, verifies all files against its checksums before changing the installation, and starts the service. Existing configuration, songs and numbers are kept, including when the old executable is in `/data/bin`. Backups are retained in `/data/music-service-backups/`; if the new service fails to start, the installer restores the previous executable and setup.
 
-**No internet on the scooter?** Download `music-service`, `install.sh`,
-`SHA256SUMS` and `music-completion.bash` from the
-[latest release](https://github.com/Jonas-Click/music-service/releases/latest)
-on your computer, then:
+**No internet on the scooter?** Download `music-service`, `install.sh`, `SHA256SUMS`, `music-completion.bash`, `music-service.service` and `config.json.example` from the [latest release](https://github.com/Jonas-Click/music-service/releases/latest) onto your computer, then stage them separately:
 
 ```sh
-ssh root@192.168.7.1 "mkdir -p /data/music-service"
+ssh root@192.168.7.1 "mkdir -p /data/music-release"
 scp music-service install.sh SHA256SUMS music-completion.bash \
-    root@192.168.7.1:/data/music-service/
-ssh root@192.168.7.1 "sh /data/music-service/install.sh"
+    music-service.service config.json.example root@192.168.7.1:/data/music-release/
+ssh root@192.168.7.1 "sh /data/music-release/install.sh --offline /data/music-release"
 ```
 
-Everything lives in `/data/music-service/`, plus the `music` command in
-`/data/bin/`, so it survives system updates.
+Offline installation makes no network requests and verifies the same checksums. The installer updates the MDB service, not the VESC app or firmware. The service and configuration live in `/data/music-service/`, with the `music` command in `/data/bin/`.
 
 **Uninstall:**
 
