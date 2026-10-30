@@ -125,6 +125,10 @@ These songs come built in:
 | 3 | Korobeiniki |
 | 4 | Happy Birthday to You |
 | 5 | robot car for justice (riff + fanfare) |
+| 6 | Space Journey |
+| 7 | Space Journey Fanfare |
+
+These are fresh-install numbers. Existing installations retain their song numbers; use `music songs` to see the current catalogue. Source credits are in [MEDIA.md](MEDIA.md).
 
 Number 1 is reserved and can't be used for your own songs.
 
@@ -135,20 +139,20 @@ second file with a bass line). Each file must be at most 2048 bytes — short,
 simple tunes work best, since the motor plays at most a few notes at once.
 
 ```sh
-music songs add 6 "My Song" my-song.mid
+music songs add 8 "My Song" my-song.mid
 systemctl restart music-service
 ```
 
 With a bass line:
 
 ```sh
-music songs add 6 "My Song" my-song-melody.mid --bass my-song-bass.mid
+music songs add 8 "My Song" my-song-melody.mid --bass my-song-bass.mid
 systemctl restart music-service
 ```
 
 Optional numbers after each file set its volume and how quickly notes fade
 (defaults: melody `1.5 0.92`, bass `0.7 0.92`), for example
-`music songs add 6 "My Song" melody.mid 2.0 0.92 --bass bass.mid 0.5 0.92`.
+`music songs add 8 "My Song" melody.mid 2.0 0.92 --bass bass.mid 0.5 0.92`.
 
 Songs you add stay on your scooter only. Only add music you have the right to
 use.
@@ -156,7 +160,7 @@ use.
 ### Remove a song
 
 ```sh
-music songs remove 6
+music songs remove 8
 systemctl restart music-service
 ```
 

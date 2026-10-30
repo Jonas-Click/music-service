@@ -12,5 +12,12 @@
   { "number": 5, "name": "robot car for justice", "default": "robot-car-for-justice", "since": "1.1.0", "tracks": [
     { "file": "robot-car-for-justice-mel.bin", "volume": 2.5, "decay": 1.0 },
     { "file": "robot-car-for-justice-bass.bin", "volume": 1.0, "decay": 0.92 }
+  ]},
+  { "number": 6, "name": "Space Journey", "default": "tng-theme", "since": "1.1.0", "tracks": [
+    { "file": "tng-theme-mel.bin", "volume": 1.0, "decay": 1.0 },
+    { "file": "tng-theme-bass.bin", "volume": 0.5, "decay": 1.0 }
+  ]},
+  { "number": 7, "name": "Space Journey Fanfare", "default": "star-trek-fanfare", "since": "1.1.0", "tracks": [
+    { "file": "star-trek-fanfare.bin", "volume": 1.5, "decay": 1.0 }
   ]}
 ]
