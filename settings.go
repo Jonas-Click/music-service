@@ -15,6 +15,7 @@ type liveSettings struct {
 }
 
 type settings struct {
+	automation            AutomationConfig
 	unlockEnabled         bool
 	unlockSong            int
 	unlockVolume          int
@@ -52,6 +53,7 @@ func (l *liveSettings) init(c *Config) {
 		musicVolume = *c.Music.Volume
 	}
 	l.s = settings{
+		automation:            c.Automation,
 		staleSeconds:          c.Status.StaleSeconds,
 		canInterface:          c.CAN.Interface,
 		redisAddr:             c.Redis.Addr,
@@ -83,6 +85,7 @@ func (l *liveSettings) update(fn func(*settings)) {
 func configForSave() *Config {
 	c := *cfg
 	s := live.get()
+	c.Automation = s.automation
 	enabled := s.unlockEnabled
 	c.UnlockMelody.Enabled = &enabled
 	c.UnlockMelody.Song = s.unlockSong

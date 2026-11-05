@@ -22,10 +22,11 @@ import (
 type engineMode string
 
 const (
-	engineOff   engineMode = "off"
-	engineOn    engineMode = "on"    // until switched off; saved in config.json
-	engineRide  engineMode = "ride"  // until the scooter is next locked
-	engineTimed engineMode = "timed" // until engineState.until
+	engineOff      engineMode = "off"
+	engineOn       engineMode = "on"       // until switched off; saved in config.json
+	engineInterval engineMode = "interval" // automatic admission until leaving ready-to-drive
+	engineRide     engineMode = "ride"     // until the scooter is next locked
+	engineTimed    engineMode = "timed"    // until engineState.until
 )
 
 const (
@@ -64,7 +65,7 @@ type engineState struct {
 // armed reports whether a mode is active right now.
 func (s engineState) armed(now time.Time) bool {
 	switch s.mode {
-	case engineOn, engineRide:
+	case engineOn, engineRide, engineInterval:
 		return true
 	case engineTimed:
 		return now.Before(s.until)
@@ -124,6 +125,9 @@ func engineInit(c *Config) {
 	engine.mu.Lock()
 	defer engine.mu.Unlock()
 	engine.s = engineState{mode: engineOff, volume: engineDefaultVolume}
+	engine.vehicleState = ""
+	engine.assertGen++
+	engine.demo = false
 	if c.EngineSound.Volume != nil {
 		engine.s.volume = *c.EngineSound.Volume
 	}
@@ -260,7 +264,8 @@ func engineVehicleState(sink canSink, newState string) (poweredUp bool) {
 	poweredUp = isPowered && !wasPowered
 	wasOn := engine.s.sounding(now, old)
 	rideEnded := wasPowered && !isPowered && engine.s.mode == engineRide
-	if rideEnded {
+	intervalEnded := old == vehicleStateReady && newState != vehicleStateReady && engine.s.mode == engineInterval
+	if rideEnded || intervalEnded {
 		engine.s.mode = engineOff
 		engine.s.gen++
 	}
@@ -403,11 +408,12 @@ func engineWriteStatus(s engineState, vehicleState string) {
 		until = strconv.FormatInt(s.until.Unix(), 10)
 	}
 	for k, v := range map[string]string{
-		engineStatusMode:      string(s.mode),
-		engineStatusUntil:     until,
-		engineStatusWantVol:   strconv.Itoa(s.volume),
-		engineStatusWantStyle: engineStyleName(s.style),
-		engineStatusSounding:  strconv.FormatBool(s.sounding(time.Now(), vehicleState)),
+		"engine_vehicle_state": vehicleState,
+		engineStatusMode:       string(s.mode),
+		engineStatusUntil:      until,
+		engineStatusWantVol:    strconv.Itoa(s.volume),
+		engineStatusWantStyle:  engineStyleName(s.style),
+		engineStatusSounding:   strconv.FormatBool(s.sounding(time.Now(), vehicleState)),
 	} {
 		if err := conn.hset(statusHash, k, v, ""); err != nil {
 			log.Printf("engine: status: hset %s failed: %v", k, err)
