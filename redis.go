@@ -58,6 +58,10 @@ func redisWatchLoop(sink canSink) error {
 		return fmt.Errorf("cmd connect: %w", err)
 	}
 	defer cmdConn.close()
+	autoSession, err := automation.session(cmdConn)
+	if err != nil {
+		return fmt.Errorf("automation seed: %w", err)
+	}
 
 	// Seed the baseline value of whatever field the unlock trigger is
 	// currently watching, so a daemon restart while the scooter is already
@@ -75,6 +79,7 @@ func redisWatchLoop(sink canSink) error {
 	engineWriteStatus(es, vstate)
 
 	channels := []string{"SUBSCRIBE", cmdChannel, vehicleChan}
+	channels = append(channels, automation.channels()...)
 	subConn.setTimeout(cmdTimeout)
 	if err := subConn.send(channels...); err != nil {
 		return fmt.Errorf("subscribe: %w", err)
@@ -117,7 +122,16 @@ func redisWatchLoop(sink canSink) error {
 		case cmdChannel:
 			handleCommand(sink, cmdConn, payload)
 		case vehicleChan:
-			handleVehicleField(sink, cmdConn, payload)
+			handleVehicleField(sink, cmdConn, payload, autoSession)
+		default:
+			if autoSession != nil {
+				snapshot, events, err := autoSession.observe(cmdConn, channel, payload)
+				if err != nil {
+					log.Printf("automation snapshot: %v", err)
+					continue
+				}
+				autoSession.execute(sink, cmdConn, events, snapshot)
+			}
 		}
 	}
 }
@@ -127,12 +141,26 @@ func redisWatchLoop(sink canSink) error {
 // (already "parked", republished for an unrelated reason).
 var lastVehicleField = map[string]string{}
 
-func handleVehicleField(sink canSink, cmdConn *redisConn, field string) {
+func handleVehicleField(sink canSink, cmdConn *redisConn, field string, session *automationSession) {
+	var snapshot automationSnapshot
+	var events []automationEvent
+	if session != nil {
+		var err error
+		snapshot, events, err = session.observe(cmdConn, vehicleHash, field)
+		if err != nil {
+			log.Printf("automation snapshot: %v", err)
+		}
+	}
 	poweredUp := false
-	if field == engineStateField {
-		if vals, err := cmdConn.hmget(vehicleHash, field); err == nil && len(vals) >= 1 {
+	if field == engineStateField || session != nil && (field == "cleared" || field == "replaced") {
+		if snapshot != nil {
+			poweredUp = engineVehicleState(sink, snapshot[vehicleHash][engineStateField])
+		} else if vals, err := cmdConn.hmget(vehicleHash, engineStateField); err == nil && len(vals) >= 1 {
 			poweredUp = engineVehicleState(sink, vals[0])
 		}
+	}
+	if snapshot != nil {
+		session.execute(sink, cmdConn, events, snapshot)
 	}
 	// Tunu starts at volume 100 after every power-up: apply the saved music
 	// volume, unless the unlock melody fires now and sets the volume itself.
@@ -536,6 +564,7 @@ func handleCommand(sink canSink, cmdConn *redisConn, payload string) {
 			log.Printf("ctl: play: invalid song %q", parts[1])
 			return
 		}
+		cancelAutomaticAudio()
 		song, _ := songByNumber(n)
 		if err := uploadSong(sink, song, uploadMaxAttempts); err != nil {
 			log.Printf("ctl: play %d upload failed: %v", n, err)
@@ -549,6 +578,7 @@ func handleCommand(sink canSink, cmdConn *redisConn, payload string) {
 		go confirmPlaying(sink, n)
 
 	case "stop":
+		cancelAutomaticAudio()
 		if err := sendStop(sink); err != nil {
 			log.Printf("ctl: stop failed: %v", err)
 			return

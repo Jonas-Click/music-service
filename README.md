@@ -121,6 +121,20 @@ music engine demo        # hear a 30-second demo while standing still
 music engine             # show the current mode
 ```
 
+## Conditional automatic actions
+
+[Native automation rules](docs/automation.md) can play songs, control engine
+sound, change style or publish a dashboard notice when an event and expression
+match. They use Expr, the same condition library as Librescoot event-service,
+without running external scripts or using its action workers. Manual commands
+remain direct, and no rules are enabled by default.
+
+The [left-brake example](examples/left-brake-engine.json) selects the next style
+before starting engine sound, grants it for the current driving interval only
+when the left brake is held, and optionally shows the selected style on the
+dashboard. Conditions and actions are configurable; no dedicated brake or
+style-rotation switch is needed.
+
 ## Songs
 
 These songs come built in:

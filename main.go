@@ -101,6 +101,7 @@ func main() {
 		os.Exit(1)
 	}
 
+	automation = cfg.compiledAutomation
 	device := cfg.CAN.Interface
 	if deviceOverride != "" {
 		device = deviceOverride

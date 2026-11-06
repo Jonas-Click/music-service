@@ -1,0 +1,32 @@
+{
+  "engine_sound": {
+    "enabled": false,
+    "volume": 50,
+    "style": "v8"
+  },
+  "automation": {
+    "inputs": [
+      { "hash": "vehicle", "fields": ["state", "brake:left"] }
+    ],
+    "rules": [
+      {
+        "name": "next-style",
+        "on": "vehicle.state.changed",
+        "when": "from == 'parked' and to == 'ready-to-drive'",
+        "actions": [{ "do": "engine.cycle" }]
+      },
+      {
+        "name": "sound-with-left-brake",
+        "on": "vehicle.state.changed",
+        "when": "from == 'parked' and to == 'ready-to-drive' and state('vehicle', 'brake:left') == 'on'",
+        "actions": [{ "do": "engine.start" }]
+      },
+      {
+        "name": "drive-notice",
+        "on": "vehicle.state.changed",
+        "when": "from == 'parked' and to == 'ready-to-drive'",
+        "actions": [{ "do": "notify" }]
+      }
+    ]
+  }
+}

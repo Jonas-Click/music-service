@@ -86,6 +86,7 @@ func TestSettingsRoundTrip(t *testing.T) {
 	songCatalog = []Song{{Number: 2, Name: "La Cucaracha"}, {Number: 7, Name: "Mine"}}
 
 	values := map[string]string{
+		"automation.inputs": "[]", "automation.rules": "[]",
 		"music.volume": "35", "unlock.enabled": "true", "unlock.song": "7",
 		"unlock.volume": "80", "unlock.duration": "12", "unlock.trigger_field": "state",
 		"unlock.trigger_value": "parked", "unlock.trigger_from": "",

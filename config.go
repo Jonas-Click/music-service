@@ -14,7 +14,9 @@ import (
 )
 
 type Config struct {
-	CAN struct {
+	Automation         AutomationConfig `json:"automation"`
+	compiledAutomation *automationEngine
+	CAN                struct {
 		Interface string `json:"interface"`
 	} `json:"can"`
 	Redis struct {
@@ -144,6 +146,11 @@ func loadConfig(path string) (*Config, error) {
 		st := engineStyles[0]
 		c.EngineSound.Style = &st
 	}
+	compiled, err := compileAutomation(c.Automation)
+	if err != nil {
+		return nil, fmt.Errorf("automation: %w", err)
+	}
+	c.compiledAutomation = compiled
 	return &c, nil
 }
 

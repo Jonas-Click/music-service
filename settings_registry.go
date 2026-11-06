@@ -7,6 +7,7 @@ package main
 // shortcuts that end in the same state and the same save.
 
 import (
+	"encoding/json"
 	"fmt"
 	"log"
 	"net"
@@ -68,7 +69,46 @@ func showInt(p *int, def int) string {
 
 func showBool(p *bool) string { return strconv.FormatBool(p != nil && *p) }
 
+func automationJSON(value any) string {
+	data, _ := json.Marshal(value)
+	return string(data)
+}
+
 var settingsRegistry = []settingDef{
+	{
+		key: "automation.inputs", desc: "Observed hash fields as a JSON array", restart: true,
+		show: func(c *Config) string { return automationJSON(c.Automation.Inputs) },
+		check: func(v string) error {
+			var inputs []AutomationInput
+			if err := decodeAutomationJSON([]byte(v), &inputs); err != nil {
+				return err
+			}
+			_, err := validateAutomationInputs(inputs)
+			return err
+		},
+		apply: func(_ canSink, v string) {
+			var inputs []AutomationInput
+			_ = decodeAutomationJSON([]byte(v), &inputs)
+			live.update(func(s *settings) { s.automation.Inputs = inputs })
+		},
+	},
+	{
+		key: "automation.rules", desc: "Automatic event rules as a JSON array", restart: true,
+		show: func(c *Config) string { return automationJSON(c.Automation.Rules) },
+		check: func(v string) error {
+			var rules []AutomationRule
+			if err := decodeAutomationJSON([]byte(v), &rules); err != nil {
+				return err
+			}
+			_, err := compileAutomationRules(rules)
+			return err
+		},
+		apply: func(_ canSink, v string) {
+			var rules []AutomationRule
+			_ = decodeAutomationJSON([]byte(v), &rules)
+			live.update(func(s *settings) { s.automation.Rules = rules })
+		},
+	},
 	{
 		key: "music.volume", desc: "Music volume 0-100, kept across unlocks (same as music vol)",
 		show:  func(c *Config) string { return showInt(c.Music.Volume, 100) },
